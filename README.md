@@ -1,0 +1,235 @@
+<p align="center">
+  <img src="docs/assets/banner.svg" alt="claude-coffee: your Mac stays awake while Claude is brewing" width="100%">
+</p>
+
+<p align="center">
+  <a href="https://github.com/ivaruf/claude-coffee/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/ivaruf/claude-coffee/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="macOS" src="https://img.shields.io/badge/macOS-Apple%20silicon-111111?logo=apple&logoColor=white">
+  <img alt="One POSIX shell script" src="https://img.shields.io/badge/POSIX%20sh-one%20script-4EAA25?logo=gnubash&logoColor=white">
+  <a href="https://code.claude.com/docs/en/hooks"><img alt="Claude Code hooks" src="https://img.shields.io/badge/Claude%20Code-hooks-D97757"></a>
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-blue"></a>
+</p>
+
+<p align="center">
+  <b>Close the lid. Claude keeps working. The Mac sleeps the moment it's done.</b>
+</p>
+
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#remote-mode-">Remote mode</a> ·
+  <a href="#faq">FAQ</a> ·
+  <a href="docs/verification.md">Field notes</a>
+</p>
+
+---
+
+You ask Claude Code for a big refactor, close the lid, and walk to a meeting. macOS goes to sleep, the turn freezes, and you come back to a half-finished job. Turning sleep off for good isn't better: you forget to turn it back on, and the Mac cooks in your bag.
+
+**claude-coffee ties sleep to what Claude is actually doing.** A handful of Claude Code hooks keep track of every session that is mid-turn. While any of them is working, the Mac stays awake, lid closed included. When the last one finishes, sleep comes back, and if the lid is already shut, the Mac goes to sleep about a second later.
+
+## Features
+
+- ☕ **Awake while Claude works**: lid closed, on battery, across any number of sessions at once
+- 💤 **Asleep when it's done**: no toggle, no timer, nothing to remember. A lid closed mid-turn sleeps right after the turn ends
+- 🤖 **Background-aware**: a turn that ends with subagents or shells still running stays awake until they report back
+- 📱 **Remote mode**: SSH in from your phone and the Mac stays up between turns, too. It lapses after an hour of quiet
+- 🛟 **Can't get stuck awake**: markers expire after 30 minutes and a launch agent re-checks every 5, so Esc, crashes and `kill -9` all wear off
+- 🔐 **Least privilege**: sudo is allowed to run exactly two commands, `pmset -a disablesleep 0` and `… 1`. Nothing else
+- 🤫 **Silent**: the hooks print nothing, so not a single token ends up in Claude's context
+- 🧪 **Tested**: CI runs the hook against fake `pmset`, `sudo` and `ioreg`, and the installer against a throwaway `$HOME`
+
+## Quick start
+
+```sh
+git clone https://github.com/ivaruf/claude-coffee
+cd claude-coffee
+./install.sh
+```
+
+The installer asks for your password once, and that's it. Running sessions pick it up on their next turn.
+
+```console
+$ ~/.claude/hooks/claude-coffee.sh status
+☕ claude-coffee
+  sleep          blocked
+  busy sessions  2
+  remote mode    off (no SSH login)
+  lid            closed
+  sudo pmset     ok
+  launch agent   ok
+```
+
+> [!TIP]
+> `alias coffee='~/.claude/hooks/claude-coffee.sh status'` in your shell profile turns that into `coffee`.
+
+<details>
+<summary><b>What the installer changes</b> (all of it undone by <code>./uninstall.sh</code>)</summary>
+
+| | What | Where |
+|---|---|---|
+| 1 | The hook script | `~/.claude/hooks/claude-coffee.sh` |
+| 2 | Five hook groups, added next to your own hooks without touching them. A backup is kept | `~/.claude/settings.json` |
+| 3 | Passwordless `pmset -a disablesleep 0` and `1`, checked with `visudo` first | `/etc/sudoers.d/claude-coffee` |
+| 4 | A launch agent that runs `claude-coffee.sh check` every 5 minutes | `~/Library/LaunchAgents/com.github.ivaruf.claude-coffee.plist` |
+
+Re-running `./install.sh` is safe; it's also how you update. macOS will show a notification that *claude-coffee.sh can run in the background*. That's the launch agent; it shows up under System Settings → General → Login Items & Extensions.
+
+**Requirements:** macOS, Claude Code, and `jq` (built into recent macOS; otherwise `brew install jq`).
+
+</details>
+
+## How it works
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor You
+    participant CC as Claude Code
+    participant Hook as claude-coffee.sh
+    participant Mac as macOS
+    You->>CC: prompt
+    CC->>Hook: UserPromptSubmit → on
+    Hook->>Mac: pmset disablesleep 1 ☕
+    Note over You,Mac: You close the lid and leave. Claude keeps going.
+    loop every tool call
+        CC->>Hook: PreToolUse → on (still busy)
+    end
+    CC->>Hook: Stop → off
+    Hook->>Mac: pmset disablesleep 0
+    Hook->>Mac: lid is closed → pmset sleepnow 💤
+```
+
+1. **One marker per busy session.** Hooks keep a file per session in `~/.claude/coffee/busy/`. `UserPromptSubmit` and `PreToolUse` create or refresh it; `Stop`, `StopFailure` and `SessionEnd` remove it. A `Stop` that still lists `background_tasks` keeps it.
+2. **Any marker means awake.** If any marker exists, the script runs `pmset -a disablesleep 1`; if none do, `0`. That is the one switch that also holds with the lid closed.
+3. **Markers go stale.** Pressing Esc never fires `Stop`, so a marker no hook has touched for 30 minutes is dropped.
+4. **A launch agent re-checks every 5 minutes**, so stale markers expire even when no hook is firing.
+5. **The lid gets a second chance.** macOS decides on lid sleep only at the moment the lid closes. If it closed mid-turn, switching sleep back on isn't enough, so the script runs `pmset sleepnow` a second later. That step is skipped when an external display keeps a closed Mac running.
+
+Every one of those steps exists because something needed it. [The field notes](docs/verification.md) list what was checked on a real Mac, including two bugs that only showed up there.
+
+### Why not just…
+
+| | Lid closed | Follows Claude automatically | Sleeps when done | Lid closed mid-turn, then sleeps |
+|---|:---:|:---:|:---:|:---:|
+| `caffeinate` (Claude Code already runs it) | ❌ | ✅ | ✅ | — |
+| Amphetamine | ✅ closed-display mode | ❌ manual, timers or app triggers | ⏲️ on its timer | — |
+| `sudo pmset -a disablesleep 1` by hand | ✅ | ❌ | 🙈 if you remember | ❌ |
+| **claude-coffee** | ✅ | ✅ | ✅ | ✅ |
+
+Watching for a `claude` process doesn't work either: an idle session is still a process, and most people have several open. The question that matters is *is any session mid-turn?*, and only the hooks know that.
+
+## Remote mode 📱
+
+Driving Claude Code from your phone over SSH (Termius, Blink, a Raspberry Pi, anything)? Then the Mac must stay up *between* turns too, or it falls asleep while you type the next prompt.
+
+So while you're logged in over SSH, claude-coffee also keeps the Mac awake when no session is busy. It lapses 60 minutes after the later of the last hook event and the login, so a dead or forgotten connection can't keep the Mac up for good.
+
+<details>
+<summary>Tips for a phone setup</summary>
+
+- Run `claude` inside `tmux` or `screen` (`screen` ships with macOS). If the connection drops, the session survives: reattach with `screen -dr`.
+- The Mac has to be awake when you connect. Remote mode keeps it up; it doesn't wake it.
+- Use key login: put your phone's public key in `~/.ssh/authorized_keys` and turn off password login.
+- The detection looks for your own `sshd-session: you@ttys…` process (OpenSSH 9.8+, macOS 26) or `sshd: you@ttys…` (older OpenSSH).
+
+</details>
+
+## Configuration
+
+Optional. Create `~/.claude/coffee/config` with any of these:
+
+```sh
+STALE_MINUTES=30   # drop a session's marker after this long with no hook activity
+REMOTE=1           # 0 turns remote mode off
+REMOTE_MINUTES=60  # how long remote mode lasts after the last activity
+```
+
+Raise `STALE_MINUTES` if your permission prompts tend to wait longer than half an hour, or if you run background jobs that stay silent that long.
+
+## Safety
+
+- **sudo can do exactly two things.** The rule lists `pmset -a disablesleep 0` and `pmset -a disablesleep 1` literally. A `disablesleep *` wildcard would be shorter, but `man sudoers` says wildcards also match whitespace, so any other `pmset` setting could ride along.
+- **It fails safe.** Without the sudoers rule, `sudo -n` fails instantly and the Mac sleeps as usual. Markers expire, the launch agent re-checks, and remote mode lapses. Nothing can hold sleep off forever.
+- **It never talks to Claude.** The hooks write nothing to stdout, so they cost no tokens and can't steer Claude. A test enforces this.
+- **Mind the heat.** A closed Mac that is awake *in a bag* gets hot. Closed on a desk is fine.
+
+## Verify it yourself
+
+```sh
+pmset -g | grep SleepDisabled            # mid-turn: "SleepDisabled 1"; idle: no line at all
+ls ~/.claude/coffee/busy                 # sessions that are mid-turn right now
+launchctl kickstart gui/$(id -u)/com.github.ivaruf.claude-coffee   # run the 5-minute check now
+
+# Why did (or didn't) the Mac sleep? The kernel says so:
+log show --last 1h --style compact --predicate 'process == "kernel" AND eventMessage CONTAINS "PMRD"' \
+  | grep -E 'prevented|sleep reason|Clamshell closed'
+# "System sleep prevented by kPMUserDisabledAllSleep" = claude-coffee; "by kPMCPUAssertion" = some other app
+```
+
+**Lid test:** start a long turn and close the lid for two minutes. `pmset -g log | grep -E 'Entering Sleep|Wake from' | tail -5` should show no sleep inside that window. Leave the lid shut past the end of the turn, and an `Entering Sleep state due to 'Software Sleep pid=…'` entry follows about a second later.
+
+## Known limits
+
+- Background work that runs longer than 30 minutes without any hook firing isn't covered: the marker goes stale and the Mac may sleep.
+- A permission prompt left unanswered for more than 30 minutes counts as stale, too.
+- After Esc, the Mac can stay awake for up to about 35 minutes (30 minutes stale limit plus the 5 minute check).
+- Verified on macOS 26 on Apple silicon. Intel Macs and older macOS versions should work but haven't been tested; [reports welcome](https://github.com/ivaruf/claude-coffee/issues/new/choose).
+
+## Uninstall
+
+```sh
+./uninstall.sh
+```
+
+It works in an order that never leaves sleep switched off: launch agent first, then the hooks, then sleep back to normal, then the sudoers rule, then the files. Your `settings.json` backup is left in place.
+
+## FAQ
+
+<details>
+<summary><b>Doesn't Claude Code already keep my Mac awake?</b></summary>
+
+It runs `caffeinate` during a turn, which stops *idle* sleep. Closing the lid still puts the Mac to sleep. That's the gap this fills.
+</details>
+
+<details>
+<summary><b>Why does it need sudo at all?</b></summary>
+
+Keeping a Mac awake with its lid closed and no external display takes root, and `pmset -a disablesleep` is the switch for it. It's missing from `man pmset`, but it's in the binary and works (verified on macOS 26). The sudoers rule lets your user flip that one switch and nothing else.
+</details>
+
+<details>
+<summary><b>I run several sessions, and subagents. Does that work?</b></summary>
+
+Yes. Every session gets its own marker, and the Mac stays awake while any of them is busy. A subagent either shares its session's marker or creates its own; either way, it keeps the Mac awake.
+</details>
+
+<details>
+<summary><b>What happens when I press Esc?</b></summary>
+
+Esc doesn't fire `Stop`, so the marker stays until it's 30 minutes old and the next check drops it. Your next prompt in that session refreshes it as usual.
+</details>
+
+<details>
+<summary><b>Does it work in VS Code, JetBrains or the desktop app?</b></summary>
+
+It's driven by the hooks in `~/.claude/settings.json`, so any Claude Code that loads them takes part. It was built and tested with the CLI.
+</details>
+
+<details>
+<summary><b>Does it drain my battery?</b></summary>
+
+Only while Claude is working, which is the point. Between turns, sleep works exactly as before (outside remote mode).
+</details>
+
+## Brewed with Claude
+
+claude-coffee started as a question typed into the Claude app on a phone: *"maybe I could have Claude Code automatically pmset when a session is running, and turn it off when no session is active?"* A few rounds in that chat sketched the design. Then Claude Code built it on a real Mac, tested it with the lid closed and recorded every assumption it checked. Two bugs only showed up on real hardware. Both are fixed and covered by tests, and the [field notes](docs/verification.md) have the details.
+
+## Contributing
+
+Issues and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). `make test` runs everything, and it never touches your real sleep settings.
+
+## License
+
+[MIT](LICENSE). Not affiliated with Anthropic. Claude is a trademark of Anthropic.
