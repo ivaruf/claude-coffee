@@ -52,12 +52,14 @@ else
 fi
 rm -f "$t"
 
-# 4. Launch agent: re-checks every 5 minutes, so markers from interrupted turns expire on time
+# 4. Launch agent: checks every minute, so markers from interrupted turns expire on time and the heat
+#    guard notices a long job (one long tool call fires no hooks)
 mkdir -p ~/Library/LaunchAgents
-cat >"$AGENT" <<EOF
+t=$(mktemp)
+cat >"$t" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- claude-coffee: re-checks every 5 min so an interrupted turn can't keep the Mac awake -->
+<!-- claude-coffee: checks every minute, for stale markers and the heat guard -->
 <plist version="1.0">
 <dict>
   <key>Label</key><string>$LABEL</string>
@@ -66,12 +68,19 @@ cat >"$AGENT" <<EOF
     <string>$HOME/.claude/hooks/claude-coffee.sh</string>
     <string>check</string>
   </array>
-  <key>StartInterval</key><integer>300</integer>
+  <key>StartInterval</key><integer>60</integer>
 </dict>
 </plist>
 EOF
-# bootout + bootstrap back to back can race; the plist never changes, so a loaded agent can stay
-launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || launchctl bootstrap "gui/$(id -u)" "$AGENT"
+# A loaded agent with the same plist stays as it is. A new or changed one (an update) is (re)loaded;
+# bootstrap right after bootout can fail while the old job winds down, hence one retry.
+if launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1 && cmp -s "$t" "$AGENT"; then
+  rm -f "$t"
+else
+  cat "$t" >"$AGENT"; rm -f "$t"
+  launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
+  launchctl bootstrap "gui/$(id -u)" "$AGENT" 2>/dev/null || { sleep 1; launchctl bootstrap "gui/$(id -u)" "$AGENT"; }
+fi
 step "launch agent" "$AGENT"
 
 printf '\n  Done. Running Claude Code sessions pick this up on their next turn.\n'

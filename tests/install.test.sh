@@ -1,5 +1,5 @@
 #!/bin/sh
-# Runs install.sh and uninstall.sh in a throwaway $HOME with fake sudo, launchctl and pmset.
+# Runs install.sh and uninstall.sh in a throwaway $HOME with fake sudo, launchctl, pmset, ioreg and osascript.
 # Your real settings, sudoers and launch agents are never touched.
 set -eu
 R=$(cd "$(dirname "$0")/.." && pwd)
@@ -17,6 +17,8 @@ cat >"$T/bin/pmset" <<EOF
 [ "\$1" = -g ] && [ "\$(cat $T/state)" = 1 ] && printf ' SleepDisabled\t\t1\n'
 exit 0
 EOF
+printf '#!/bin/sh\necho "      \\"AppleClamshellState\\" = No"\n' >"$T/bin/ioreg"
+printf '#!/bin/sh\necho 0\n' >"$T/bin/osascript"
 cat >"$T/bin/launchctl" <<EOF
 #!/bin/sh
 echo "launchctl \$*" >>$T/log
@@ -53,7 +55,9 @@ printf '{"session_id":"S1"}' | HOME=$T PATH="$T/bin:$PATH" sh -c "$cmd"
 
 run install.sh
 [ "$(ours)" = 5 ]; t                                                  # re-running doesn't duplicate
-[ "$(grep -c bootstrap "$T/log")" = 1 ]; t                            # a loaded agent is left alone
+[ "$(grep -c bootstrap "$T/log")" = 1 ]; t                            # a loaded, unchanged agent is left alone
+sed -i '' 's|<integer>60</integer>|<integer>300</integer>|' "$P"; run install.sh
+[ "$(grep -c bootstrap "$T/log")" = 2 ]; grep -q '<integer>60</integer>' "$P"; t  # an older plist is replaced and reloaded
 
 run uninstall.sh
 [ "$(ours)" = 0 ]; t

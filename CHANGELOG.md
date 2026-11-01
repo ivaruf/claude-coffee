@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- Heat guard: with the lid closed, serious thermal pressure or a battery at 45 °C (`HOT_BATTERY_C`) puts the Mac to sleep, even mid-turn, and keeps it there until the lid opens. It leaves a notification saying why. `HEAT_GUARD=0` turns it off.
+- `status` shows the battery temperature, the thermal state and the heat guard.
+
+### Changed
+
+- The launch agent checks every minute instead of every 5, so the heat guard notices long jobs. `install.sh` reloads an agent installed by an older version.
+- When idle, the check no longer re-applies `disablesleep 0` (a `sudo` call) every time.
+
 ### Fixed
 
 - If a turn started during the one-second wait before `pmset sleepnow`, the Mac could be put to sleep mid-turn. The hook now checks again right before sleeping.

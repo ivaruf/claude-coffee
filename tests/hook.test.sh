@@ -1,5 +1,5 @@
 #!/bin/sh
-# Runs claude-coffee.sh against fake pmset, sudo, ioreg, pgrep and ps in a throwaway $HOME.
+# Runs claude-coffee.sh against fake pmset, sudo, ioreg, osascript, pgrep and ps in a throwaway $HOME.
 # Your real sleep settings are never touched, so this is safe to run at any time.
 set -eu
 S=$(cd "$(dirname "$0")/.." && pwd)/claude-coffee.sh
@@ -21,11 +21,17 @@ cat >"$T/bin/ps" <<EOF
 #!/bin/sh
 cat $T/etime
 EOF
-echo No >"$T/lid"
+echo No >"$T/lid"; echo 3032 >"$T/batt"; echo 0 >"$T/thermal"   # battery 3032 = 303.2 K = 30 °C
 cat >"$T/bin/ioreg" <<EOF
 #!/bin/sh
 echo "      \"AppleClamshellState\" = \$(cat $T/lid)"
 echo "      \"AppleClamshellCausesSleep\" = Yes"
+echo "      \"VirtualTemperature\" = 9999"
+echo "      \"Temperature\" = \$(cat $T/batt)"
+EOF
+cat >"$T/bin/osascript" <<EOF
+#!/bin/sh
+if [ "\$1" = -l ]; then cat $T/thermal; else echo "\$*" >>$T/notified; fi
 EOF
 cat >"$T/bin/sudo" <<EOF
 #!/bin/sh
@@ -73,7 +79,24 @@ echo "touch $T/.claude/coffee/busy/F2" >"$T/during-sleep"
 rm "$T/.claude/coffee/busy/F2"; hook on F >/dev/null
 echo "echo 1 >$T/state" >"$T/during-sleep"
 hook off F >/dev/null; [ ! -e "$T/slept" ]; t       # another hook disables sleep during the wait: no sleepnow
-rm "$T/during-sleep"; echo 0 >"$T/state"
+rm "$T/during-sleep"; echo 0 >"$T/state"; rm -f "$T/slept"
+[ "$(hook on H)" = 1 ]; t           # heat guard: lid closed, cool: awake
+echo 2 >"$T/thermal"
+[ "$(hook on H)" = 0 ]; t           # serious thermal pressure: sleep allowed mid-turn ...
+[ -e "$T/slept" ]; t                # ... and asleep now, though H is still busy
+[ -e "$T/.claude/coffee/hot" ]; grep -q 'display notification' "$T/notified"; t  # tripped, and says why
+echo 0 >"$T/thermal"; rm "$T/slept"
+[ "$(hook on H)" = 0 ]; [ "$(chk)" = 0 ]; t   # cooled down in the bag: stays tripped (no dark-wake heating)
+echo No >"$T/lid"
+[ "$(hook on H)" = 1 ]; [ ! -e "$T/.claude/coffee/hot" ]; t   # lid opens: guard resets, Claude carries on
+echo Yes >"$T/lid"; echo 3182 >"$T/batt"
+[ "$(hook on H)" = 0 ]; t           # battery at 45 °C (318.2 K) trips it too; VirtualTemperature is ignored
+echo No >"$T/lid"; echo 3032 >"$T/batt"; echo 3 >"$T/thermal"
+[ "$(hook on H)" = 1 ]; t           # lid open: heat is macOS's business, not ours
+echo Yes >"$T/lid"; echo 'HEAT_GUARD=0' >"$T/.claude/coffee/config"
+[ "$(hook on H)" = 1 ]; t           # guard switched off in config
+rm "$T/.claude/coffee/config"; echo 0 >"$T/thermal"; echo No >"$T/lid"
+[ "$(hook off H)" = 0 ]; rm -f "$T/slept"
 echo No >"$T/lid"
 echo 4242 >"$T/ssh"                 # remote mode: logged in over SSH
 [ "$(hook on G)" = 1 ]
@@ -97,6 +120,7 @@ out=$(HOME=$T PATH="$T/bin:$PATH" sh "$S" status)
 [ "$(cat "$T/state")" = 1 ]; t      # status changes nothing ...
 printf "%s\n" "$out" | grep -q "busy sessions  1"; t   # ... and reports
 printf "%s\n" "$out" | grep -q "lid            open"; t
+printf "%s\n" "$out" | grep -q "heat           battery 30 °C, thermal state nominal"; t   # real readings, faked here
 printf "%s\n" "$out" | grep -q "sudo pmset     missing"; t   # no NOPASSWD rule ...
 echo '    (root) NOPASSWD: /usr/bin/pmset -a disablesleep 0, /usr/bin/pmset -a disablesleep 1' >"$T/sudoers"
 HOME=$T PATH="$T/bin:$PATH" sh "$S" status | grep -q "sudo pmset     ok"; t   # ... and with one

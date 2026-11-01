@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 400" width="900" height="400" role="img" aria-labelledby="title desc">
+  <title id="title">Too hot in the bag</title>
+  <desc id="desc">Little Claude peeks out of a bag next to a closed MacBook, sweating, with heat rising from the bag. A thermometer reads 45 °C, or thermal state serious. Two status chips read: too hot, then asleep. Caption: Too hot in the bag? It goes to sleep anyway.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#341a10"/>
+      <stop offset="1" stop-color="#170a06"/>
+    </linearGradient>
+    <radialGradient id="heat" cx="0.44" cy="0.55" r="0.5">
+      <stop offset="0" stop-color="#e4572e" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="#e4572e" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f2876a"/>
+      <stop offset="1" stop-color="#d85b40"/>
+    </linearGradient>
+    <linearGradient id="alu" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#e6d9cf"/>
+      <stop offset="1" stop-color="#b9a397"/>
+    </linearGradient>
+    <linearGradient id="bag" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#86593a"/>
+      <stop offset="1" stop-color="#5e3d27"/>
+    </linearGradient>
+    <style>
+      .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+      .wave { fill: none; stroke: #ff8a5c; stroke-width: 5; stroke-linecap: round; opacity: 0;
+              animation: rise 2.6s ease-in-out infinite; }
+      .w2 { animation-delay: .85s; } .w3 { animation-delay: 1.7s; }
+      @keyframes rise { 0% { opacity: 0; transform: translateY(14px); } 40% { opacity: .75; } 100% { opacity: 0; transform: translateY(-22px); } }
+      .drop { animation: drip 1.8s ease-in infinite; }
+      .d2 { animation-delay: .9s; }
+      @keyframes drip { 0% { opacity: 0; transform: translateY(-4px); } 30% { opacity: 1; } 100% { opacity: 0; transform: translateY(16px); } }
+      .throb { animation: throb 1.6s ease-in-out infinite; }
+      @keyframes throb { 50% { opacity: .7; } }
+      @media (prefers-reduced-motion: reduce) {
+        .wave { animation: none; opacity: .6; } .drop { animation: none; } .throb { animation: none; }
+      }
+    </style>
+  </defs>
+
+  <rect width="900" height="400" rx="24" fill="url(#bg)"/>
+  <rect width="900" height="400" rx="24" fill="url(#heat)"/>
+
+  <!-- status: too hot → asleep -->
+  <rect x="24" y="24" width="112" height="30" rx="15" fill="#e4572e"/>
+  <g transform="translate(40 30)">
+    <rect x="3" y="0" width="6" height="12" rx="3" fill="#1f0e08"/>
+    <circle cx="6" cy="14" r="5" fill="#1f0e08"/>
+  </g>
+  <text x="58" y="44" class="sans" font-size="15" font-weight="700" fill="#1f0e08">too hot</text>
+  <path d="M146 39 H170 M163 32 L171 39 L163 46" fill="none" stroke="#f3e6d8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="180" y="24" width="100" height="30" rx="15" fill="#5f80d8"/>
+  <g transform="translate(196 31)">
+    <circle cx="7" cy="8" r="7" fill="#0f1426"/>
+    <circle cx="10.5" cy="5.5" r="6" fill="#5f80d8"/>
+  </g>
+  <text x="216" y="44" class="sans" font-size="15" font-weight="700" fill="#0f1426">asleep</text>
+
+  <!-- floor -->
+  <ellipse cx="405" cy="338" rx="190" ry="14" fill="#0d0604" opacity=".6"/>
+
+  <!-- strap, behind the bag -->
+  <path d="M276 196 C 286 40 524 40 534 196" fill="none" stroke="#4e3220" stroke-width="16" stroke-linecap="round"/>
+
+  <!-- heat rising -->
+  <path class="wave"    d="M318 106 C 306 90 330 78 318 58"/>
+  <path class="wave w2" d="M362 98 C 350 82 374 70 362 50"/>
+  <path class="wave w3" d="M406 106 C 394 90 418 78 406 58"/>
+
+  <!-- closed MacBook standing in the bag -->
+  <rect x="284" y="112" width="178" height="110" rx="8" fill="url(#alu)"/>
+  <rect x="448" y="112" width="14" height="110" rx="6" fill="#9c887d"/>
+  <rect x="451" y="118" width="3" height="104" fill="#6f5e55"/>
+  <rect x="294" y="117" width="146" height="3" rx="1.5" fill="#fff" opacity=".45"/>
+  <rect x="284" y="112" width="178" height="110" rx="8" fill="#e4572e" opacity=".18" class="throb"/>
+
+  <!-- Claude, peeking out and overheating -->
+  <g transform="translate(508 150) scale(0.86)">
+    <rect x="-50" y="-52" width="100" height="106" rx="46" fill="url(#body)"/>
+    <path d="M-2 -51 C -8 -68 12 -76 14 -62" fill="none" stroke="#f2876a" stroke-width="7" stroke-linecap="round"/>
+    <ellipse cx="-24" cy="-30" rx="15" ry="8" fill="#fff" opacity=".14" transform="rotate(-28 -24 -30)"/>
+    <path d="M-25 -17 L-13 -11 L-25 -5" fill="none" stroke="#2b1b13" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M23 -17 L11 -11 L23 -5" fill="none" stroke="#2b1b13" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <ellipse cx="-32" cy="5" rx="9" ry="5" fill="#ff6f5e" opacity=".85"/>
+    <ellipse cx="30" cy="5" rx="9" ry="5" fill="#ff6f5e" opacity=".85"/>
+    <ellipse cx="-1" cy="10" rx="8" ry="7" fill="#2b1b13"/>
+    <ellipse cx="-1" cy="14" rx="4.5" ry="2.8" fill="#f08a7a"/>
+  </g>
+  <!-- sweat -->
+  <g class="drop"><path d="M454 104 C 458 111 460 115 454 119 C 448 115 450 111 454 104 Z" fill="#9fd3ff"/></g>
+  <g class="drop d2"><path d="M566 112 C 570 119 572 123 566 127 C 560 123 562 119 566 112 Z" fill="#9fd3ff"/></g>
+
+  <!-- bag front -->
+  <path d="M250 196 H560 V306 A30 30 0 0 1 530 336 H280 A30 30 0 0 1 250 306 Z" fill="url(#bag)"/>
+  <rect x="250" y="190" width="310" height="14" rx="7" fill="#9a6a47"/>
+  <rect x="300" y="236" width="210" height="80" rx="18" fill="#6e4a30"/>
+  <rect x="308" y="244" width="194" height="64" rx="13" fill="none" stroke="#a7795a" stroke-width="2" stroke-dasharray="6 5"/>
+  <rect x="384" y="228" width="42" height="20" rx="5" fill="#c9a27c"/>
+  <!-- Claude's hands on the rim -->
+  <ellipse cx="470" cy="194" rx="11" ry="9" fill="#cf5f45"/>
+  <ellipse cx="546" cy="194" rx="11" ry="9" fill="#cf5f45"/>
+
+  <!-- thermometer -->
+  <g transform="translate(690 0)">
+    <rect x="-14" y="86" width="28" height="196" rx="14" fill="#2b1b13" stroke="#f3e6d8" stroke-width="3"/>
+    <circle cx="0" cy="298" r="26" fill="#2b1b13" stroke="#f3e6d8" stroke-width="3"/>
+    <rect x="-7" y="112" width="14" height="190" rx="7" fill="#e4572e" class="throb"/>
+    <circle cx="0" cy="298" r="19" fill="#e4572e"/>
+    <g stroke="#f3e6d8" stroke-width="2" stroke-linecap="round" opacity=".7">
+      <line x1="16" y1="130" x2="26" y2="130"/>
+      <line x1="16" y1="170" x2="22" y2="170"/>
+      <line x1="16" y1="210" x2="26" y2="210"/>
+      <line x1="16" y1="250" x2="22" y2="250"/>
+    </g>
+    <text x="36" y="124" class="sans" font-size="26" font-weight="800" fill="#fbf4ec">45 °C</text>
+    <text x="36" y="148" class="sans" font-size="14" font-weight="600" fill="#e8b9a3">or thermal state: serious</text>
+  </g>
+
+  <text x="450" y="378" text-anchor="middle" class="sans" font-size="18" font-weight="700" fill="#fbf4ec">Too hot in the bag? It goes to sleep anyway.</text>
+</svg>

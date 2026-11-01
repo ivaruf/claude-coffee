@@ -3,17 +3,20 @@
 # https://github.com/ivaruf/claude-coffee
 #
 # usage: claude-coffee.sh on|off   Claude Code hooks (hook JSON on stdin)
-#        claude-coffee.sh check    the launch agent, every 5 minutes (reads no stdin)
+#        claude-coffee.sh check    the launch agent, every minute (reads no stdin)
 #        claude-coffee.sh status   for you; changes nothing
 
 C=~/.claude/coffee
 STALE_MINUTES=30    # drop a marker no hook has touched for this long (Esc never fires Stop)
 REMOTE=1            # 0 = no remote mode
 REMOTE_MINUTES=60   # remote mode lapses this long after the last hook event and the SSH login
+HEAT_GUARD=1        # 0 = never let heat end a turn early
+HOT_BATTERY_C=45    # with the lid closed, a battery this hot (°C) means sleep, mid-turn or not
 # shellcheck source=/dev/null
 [ -f "$C/config" ] && . "$C/config"
 D=$C/busy   # one marker file per session that is mid-turn
 L=$C/last   # touched on every hook event
+H=$C/hot    # the heat guard tripped; stays until the lid opens
 mkdir -p "$D"
 
 case $1 in
@@ -51,9 +54,35 @@ if [ "$REMOTE" = 1 ] && ssh=$(pgrep -u "$(id -u)" -f '^sshd(-session)?: [^ ]+@')
   fi
 fi
 
-# SleepDisabled is missing from pmset -g when it is 0, so an empty value just re-applies 0
-have=$(pmset -g | awk '/SleepDisabled/{print $2}')
+# 2 = the lid is closed and that normally means sleep (no external display keeping the Mac up)
 lid=$(ioreg -r -k AppleClamshellState -d 1 | grep -cE '"AppleClamshell(State|CausesSleep)" = Yes')
+
+# Heat guard: a closed Mac that keeps working in a bag can't get rid of its heat. With the lid
+# closed, macOS reporting serious thermal pressure or a battery at HOT_BATTERY_C allows sleep and
+# sleeps now, even mid-turn. It stays tripped until the lid opens, so a dark wake in the bag can't
+# start the heat up again. With the lid open, heat is macOS's own business.
+heat() {   # thermal state 0-3 (nominal, fair, serious, critical) and battery °C; neither needs root.
+  # The battery's "Temperature" is in 0.1 K (see docs/verification.md); "VirtualTemperature" is a model
+  thermal=$(osascript -l JavaScript -e 'ObjC.import("Foundation"); $.NSProcessInfo.processInfo.thermalState' 2>/dev/null | tr -cd 0-9)
+  battery=$(ioreg -r -n AppleSmartBattery -d 1 | awk '/"Temperature" = / { print int($3 / 10 - 273.15) }')
+}
+hot=0
+if [ "$lid" != 2 ]; then
+  [ "$1" = status ] || rm -f "$H"
+elif [ -e "$H" ]; then
+  hot=1
+elif [ "$want" = 1 ] && [ "$HEAT_GUARD" = 1 ] && [ "$1" != status ]; then
+  heat
+  if [ "${thermal:-0}" -ge 2 ] || [ "${battery:-0}" -ge "$HOT_BATTERY_C" ]; then
+    hot=1
+    echo "$(date '+%Y-%m-%d %H:%M'), thermal state ${thermal:-?}, battery ${battery:-?} °C" >"$H"
+    osascript -e 'display notification "Your Mac got hot with the lid closed, so it went to sleep. Open the lid to carry on." with title "claude-coffee"' >/dev/null 2>&1
+  fi
+fi
+[ "$hot" = 1 ] && want=0
+
+# SleepDisabled is missing from pmset -g when it is 0
+have=$(pmset -g | awk '/SleepDisabled/{print $2}')
 
 if [ "$1" = status ]; then
   ok() { if "$@" >/dev/null 2>&1; then echo ok; else echo "missing (run install.sh)"; fi; }
@@ -68,24 +97,35 @@ if [ "$1" = status ]; then
     *) r='on (SSH login)' ;;
   esac
   [ "$REMOTE" = 1 ] || r='disabled in config'
+  heat
+  case ${thermal:-} in 0) tn=nominal ;; 1) tn=fair ;; 2) tn=serious ;; 3) tn=critical ;; *) tn=unknown ;; esac
+  h="battery ${battery:-?} °C, thermal state $tn"
+  if [ -e "$H" ]; then g="tripped $(cat "$H"); resets when the lid opens"
+  elif [ "$HEAT_GUARD" = 1 ]; then g="armed: lid closed and serious thermal state or battery ${HOT_BATTERY_C} °C → sleep"
+  else g='disabled in config'; fi
   printf 'claude-coffee\n'
   printf '  sleep          %s\n' "$s"
   printf '  busy sessions  %s\n' "$busy"
   printf '  remote mode    %s\n' "$r"
   printf '  lid            %s\n' "$(if ioreg -r -k AppleClamshellState -d 1 | grep -q '"AppleClamshellState" = Yes'; then echo closed; else echo open; fi)"
+  printf '  heat           %s\n' "$h"
+  printf '  heat guard     %s\n' "$g"
   printf '  sudo pmset     %s\n' "$(ok nopasswd)"
   printf '  launch agent   %s\n' "$(ok launchctl print "gui/$(id -u)/com.github.ivaruf.claude-coffee")"
   exit 0
 fi
 
-[ "$want" = "$have" ] || sudo -n /usr/bin/pmset -a disablesleep "$want" >/dev/null
+[ "$want" = "${have:-0}" ] || sudo -n /usr/bin/pmset -a disablesleep "$want" >/dev/null
 
 # macOS decides on lid sleep only when the lid closes. If it closed while sleep was disabled,
 # re-enabling sleep leaves the Mac awake, so sleep now. Skipped when an external display keeps a
 # closed Mac running (AppleClamshellCausesSleep = No).
 if [ "$want" = 0 ] && [ "$have" = 1 ] && [ "$lid" = 2 ]; then
   sleep 1
-  # A turn may have started during that second (a marker, or another hook's disablesleep 1): stay up
-  if [ -z "$(ls "$D")" ] && ! pmset -g | grep -q SleepDisabled; then pmset sleepnow >/dev/null 2>&1; fi
+  # Unless it's too hot: a turn may have started during that second (a marker, or another hook's
+  # disablesleep 1). Then stay up
+  if [ "$hot" = 1 ] || { [ -z "$(ls "$D")" ] && ! pmset -g | grep -q SleepDisabled; }; then
+    pmset sleepnow >/dev/null 2>&1
+  fi
 fi
 exit 0

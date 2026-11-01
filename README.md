@@ -63,7 +63,8 @@ Watching for a `claude` process doesn't work either: an idle session is still a 
 - **Asleep when it's done**: no toggle, no timer, nothing to remember. A lid closed mid-turn sleeps right after the turn ends
 - **Background-aware**: a turn that ends with subagents or shells still running stays awake until they report back
 - **Remote mode**: SSH in from your phone and the Mac stays up between turns, too. It lapses after an hour of quiet
-- **Can't get stuck awake**: markers expire after 30 minutes and a launch agent re-checks every 5, so Esc, crashes and `kill -9` all wear off
+- **Heat guard**: if the closed Mac gets hot, say in a bag, it goes to sleep anyway, mid-turn, and leaves a notification saying why
+- **Can't get stuck awake**: markers expire after 30 minutes and a launch agent re-checks every minute, so Esc, crashes and `kill -9` all wear off
 - **Least privilege**: sudo is allowed to run exactly two commands, `pmset -a disablesleep 0` and `… 1`. Nothing else
 - **Silent**: the hooks print nothing, so not a single token ends up in Claude's context
 - **Tested**: CI runs the hook against fake `pmset`, `sudo` and `ioreg`, and the installer against a throwaway `$HOME`
@@ -85,6 +86,8 @@ claude-coffee
   busy sessions  2
   remote mode    off (no SSH login)
   lid            closed
+  heat           battery 31 °C, thermal state nominal
+  heat guard     armed: lid closed and serious thermal state or battery 45 °C → sleep
   sudo pmset     ok
   launch agent   ok
 ```
@@ -100,7 +103,7 @@ claude-coffee
 | 1 | The hook script | `~/.claude/hooks/claude-coffee.sh` |
 | 2 | Five hook groups, added next to your own hooks without touching them. A backup is kept | `~/.claude/settings.json` |
 | 3 | Passwordless `pmset -a disablesleep 0` and `1`, checked with `visudo` first | `/etc/sudoers.d/claude-coffee` |
-| 4 | A launch agent that runs `claude-coffee.sh check` every 5 minutes | `~/Library/LaunchAgents/com.github.ivaruf.claude-coffee.plist` |
+| 4 | A launch agent that runs `claude-coffee.sh check` every minute | `~/Library/LaunchAgents/com.github.ivaruf.claude-coffee.plist` |
 
 Re-running `./install.sh` is safe; it's also how you update. macOS will show a notification that *claude-coffee.sh can run in the background*. That's the launch agent; it shows up under System Settings → General → Login Items & Extensions.
 
@@ -117,8 +120,9 @@ Re-running `./install.sh` is safe; it's also how you update. macOS will show a n
 1. **One marker per busy session.** Hooks keep a file per session in `~/.claude/coffee/busy/`. `UserPromptSubmit` and `PreToolUse` create or refresh it; `Stop`, `StopFailure` and `SessionEnd` remove it. A `Stop` that still lists `background_tasks` keeps it.
 2. **Any marker means awake.** If any marker exists, the script runs `pmset -a disablesleep 1`; if none do, `0`. That is the one switch that also holds with the lid closed.
 3. **Markers go stale.** Pressing Esc never fires `Stop`, so a marker no hook has touched for 30 minutes is dropped.
-4. **A launch agent re-checks every 5 minutes**, so stale markers expire even when no hook is firing.
+4. **A launch agent re-checks every minute**, so stale markers expire and the heat guard sees long jobs, even when no hook is firing.
 5. **The lid gets a second chance.** macOS decides on lid sleep only at the moment the lid closes. If it closed mid-turn, switching sleep back on isn't enough, so the script runs `pmset sleepnow` a second later. That step is skipped when an external display keeps a closed Mac running.
+6. **The heat guard has the last word.** With the lid closed, if macOS reports *serious* thermal pressure or the battery reaches 45 °C, sleep is allowed and the Mac sleeps now, even mid-turn. It stays that way until you open the lid, so a brief wake in the bag can't start the heat up again.
 
 Every one of those steps exists because something needed it. [The field notes](docs/verification.md) list what was checked on a real Mac, including two bugs that only showed up there.
 
@@ -146,6 +150,8 @@ Optional. Create `~/.claude/coffee/config` with any of these:
 STALE_MINUTES=30   # drop a session's marker after this long with no hook activity
 REMOTE=1           # 0 turns remote mode off
 REMOTE_MINUTES=60  # how long remote mode lasts after the last activity
+HEAT_GUARD=1       # 0 turns the heat guard off
+HOT_BATTERY_C=45   # with the lid closed, a battery this hot (°C) means sleep
 ```
 
 Raise `STALE_MINUTES` if your permission prompts tend to wait longer than half an hour, or if you run background jobs that stay silent that long.
@@ -155,7 +161,21 @@ Raise `STALE_MINUTES` if your permission prompts tend to wait longer than half a
 - **sudo can do exactly two things.** The rule lists `pmset -a disablesleep 0` and `pmset -a disablesleep 1` literally. A `disablesleep *` wildcard would be shorter, but `man sudoers` says wildcards also match whitespace, so any other `pmset` setting could ride along.
 - **It fails safe.** Without the sudoers rule, `sudo -n` fails instantly and the Mac sleeps as usual. Markers expire, the launch agent re-checks, and remote mode lapses. Nothing can hold sleep off forever.
 - **It never talks to Claude.** The hooks write nothing to stdout, so they cost no tokens and can't steer Claude. A test enforces this.
-- **Mind the heat.** A closed Mac that is awake *in a bag* gets hot. Closed on a desk is fine.
+
+### Heat guard
+
+<p align="center">
+  <img src="docs/assets/too-hot.svg" alt="Little Claude, sweating, peeks out of a bag next to the closed MacBook while heat rises from it. A thermometer reads 45 °C, or thermal state serious. Status: too hot, then asleep." width="100%">
+</p>
+
+Start a heavy job, close the lid and toss the Mac in a bag, and it can't get rid of its heat. So with the lid closed, claude-coffee also watches two readings that need no root: macOS's thermal state and the battery's temperature sensor. If either crosses its limit, the Mac goes to sleep, even mid-turn, and leaves a notification saying why. It stays asleep until you open the lid, so a brief wake in the bag can't start the heat up again.
+
+| Reading | Limit | Why that limit |
+|---|---|---|
+| Thermal state | *serious* | Apple's definition: "fans are … running at maximum speed" and "the system begins enacting countermeasures". It's the point where Apple tells apps to cut back. In a bag the fans can't help |
+| Battery temperature | 45 °C | Apple doesn't publish one; its 10–35 °C range is for the room. 45 °C is the top of the lithium-ion charging range and Apple's highest storage temperature. Cells may discharge up to 60 °C |
+
+Sources and measurements are in the [field notes](docs/verification.md#heat-guard). It's a safety net, not an invitation: closed on a desk is fine, closed in a bag still isn't.
 
 ## Verify it yourself
 
@@ -176,7 +196,9 @@ log show --last 1h --style compact --predicate 'process == "kernel" AND eventMes
 
 - Background work that runs longer than 30 minutes without any hook firing isn't covered: the marker goes stale and the Mac may sleep.
 - A permission prompt left unanswered for more than 30 minutes counts as stale, too.
-- After Esc, the Mac can stay awake for up to about 35 minutes (30 minutes stale limit plus the 5 minute check).
+- After Esc, the Mac can stay awake for up to about 31 minutes (30 minutes stale limit plus the 1 minute check).
+- The heat guard hasn't been tried in an actual bag yet, and during one long tool call it only reacts once a minute.
+- A fanless MacBook Air doing heavy work with the lid closed and no external display can reach *serious* on a desk too. The heat guard then puts it to sleep.
 - Verified on macOS 26 on Apple silicon. Intel Macs and older macOS versions should work but haven't been tested; [reports welcome](https://github.com/ivaruf/claude-coffee/issues/new/choose).
 
 ## Uninstall
@@ -217,6 +239,12 @@ Esc doesn't fire `Stop`, so the marker stays until it's 30 minutes old and the n
 <summary><b>Does it work in VS Code, JetBrains or the desktop app?</b></summary>
 
 It's driven by the hooks in `~/.claude/settings.json`, so any Claude Code that loads them takes part. It was built and tested with the CLI.
+</details>
+
+<details>
+<summary><b>Does it read real temperatures?</b></summary>
+
+Two, neither needing root: the battery's own temperature sensor (via `ioreg`), and macOS's thermal state (nominal, fair, serious, critical), the same signal it uses to throttle. CPU and SoC die temperatures would need root (`powermetrics`) or private APIs, so claude-coffee doesn't use them. `claude-coffee.sh status` shows both readings.
 </details>
 
 <details>

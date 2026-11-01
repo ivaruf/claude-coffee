@@ -42,6 +42,36 @@ The kernel logged `System sleep prevented by kPMUserDisabledAllSleep` when the l
 | SSH login detection | A login shows up as root's `sshd-session: you [priv]` and your own `sshd-session: you@ttys025`. Only the second has an `@`. With no markers, against a live login: recent hook event → awake; 60 minutes without one and a login over an hour old → sleep allowed. |
 | The SSH pattern also matches older OpenSSH | `pgrep -f '^sshd(-session)?: [^ ]+@'` matches both `sshd-session: me@ttys998` and `sshd: me@ttys999` and skips `sshd-session: me [priv]`, checked with fake process titles. Not tested against a real pre-9.8 `sshd`. |
 
+## Heat guard
+
+### Official limits
+
+Apple publishes no battery or chip temperature limit for Macs. What it does publish, and what the limits are based on:
+
+| Source | What it says |
+|---|---|
+| [Keep your Mac laptop within acceptable operating temperatures](https://support.apple.com/en-us/102336) | Use it where the ambient temperature is 10–35 °C, on "a stable work surface that allows for good ventilation" |
+| [Apple: Batteries, maximizing performance](https://www.apple.com/batteries/maximizing-performance/) | MacBook works best at 10–35 °C ambient; storage −20 to 45 °C; ideal 16–22 °C. Above 35 °C ambient "can permanently damage battery capacity", and "software may limit charging above 80% when the recommended battery temperatures are exceeded" |
+| [MacBook Pro: important safety information](https://support.apple.com/guide/macbook-pro/important-safety-information-apd9b8f7aa11/mac) | "Adequate air circulation under and around the computer"; "never place anything over the keyboard when operating". Bags aren't mentioned |
+| [Energy Efficiency Guide: thermal state](https://developer.apple.com/library/archive/documentation/Performance/Conceptual/power_efficiency_guidelines_osx/RespondToThermalStateChanges.html) | *Serious*: "Thermals are highly elevated. Fans are active, running at maximum speed … the system begins enacting countermeasures"; apps should start cutting back. *Critical*: "The device needs to cool down" |
+| [Battery University BU-410](https://batteryuniversity.com/article/bu-410-charging-at-high-and-low-temperatures) | Lithium-ion: charge 0–45 °C, discharge −20 to 60 °C; many chargers stop charging above 50 °C |
+| [Battery University BU-808](https://batteryuniversity.com/article/bu-808-how-to-prolong-lithium-based-batteries) | Above 30 °C is "elevated" and speeds up wear; a full battery kept at 40 °C keeps about 65% of its capacity after a year, against 80% at 25 °C |
+
+So the guard trips at *serious*, where Apple tells software to back off, or at a battery temperature of 45 °C: the top of the lithium-ion charging range and Apple's highest storage temperature, with room to spare before the 60 °C discharge limit. Apple's 35 °C is about the room, and the battery normally runs a few degrees above it, so 35 °C as a battery limit would trip during ordinary heavy work.
+
+### Measurements
+
+Measured on 2026-11-01, same Mac, on battery.
+
+| Question | Result |
+|---|---|
+| Can a hook read temperatures without root? | Yes, two: macOS's thermal state (`NSProcessInfo.thermalState`, read through `osascript -l JavaScript` in 62 ms) and the battery's sensors (`ioreg -r -n AppleSmartBattery`, 32 ms). Die temperatures need root (`powermetrics`) or private APIs. |
+| `pmset -g therm` | Records nothing on this Mac ("No thermal warning level has been recorded"), so it isn't used. |
+| Units of the battery's `Temperature` | **0.1 K**, not 0.01 °C as many scripts online assume. During 90 s of load on all cores, `Temperature` went 2978 → 2981 and `VirtualTemperature` (0.01 °C; its lifetime average of 23 °C matches) went 2459 → 2489. Both rose by 0.3 °C, and as 0.1 K, 2978 is 24.65 °C, next to the virtual 24.59 °C. Read as 0.01 °C, the battery would be 5 °C warmer than its own model and react 10 times slower. |
+| How often the battery values change | About once a minute, which suits the launch agent's one-minute check. |
+| Does heavy work alone trip it? | 90 s of load on all cores left the thermal state at *nominal* and the battery at 25 °C. The battery's lifetime maximum is 42 °C, below the 45 °C limit. |
+| Not tested yet | An actual bag, and the thermal state reaching *serious* on real hardware. The tests fake both. |
+
 ## Ideas that didn't survive
 
 The design started in a phone chat with Claude. Some first drafts were replaced once they met the details:
