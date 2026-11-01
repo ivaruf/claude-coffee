@@ -140,7 +140,7 @@ echo junk >"$T/.claude/coffee/claude-coffee.ps1"; hook on F; chk
 grep -q '^param(' "$T/.claude/coffee/claude-coffee.ps1"; t           # an outdated PowerShell half is rewritten
 hook off F
 touch -t 202001010000 "$T/.claude/coffee/win.cache"; echo closed >"$T/lid"
-HOME=$T PATH="$T/bin:$PATH" sh "$HK" status | grep -q 'lid            closed'; t   # status asks, not the old cache
+out=$(HOME=$T PATH="$T/bin:$PATH" sh "$HK" status); printf '%s\n' "$out" | grep -q 'lid            closed'; t   # status asks, not the old cache
 echo open >"$T/lid"; printf 'lid closed\nonbatt 1\ncharge 5\nthermal 3\n' >"$T/.claude/coffee/win.cache"
 touch -t 202001010000 "$T/.claude/coffee/win.cache"
 printf '{"session_id":"G"}' | HOME=$T PATH="$T/bin:$PATH" sh "$HK" on

@@ -29,6 +29,7 @@ exit 0
 EOF
 printf '#!/bin/sh\necho "      \\"AppleClamshellState\\" = No"\n' >"$T/bin/ioreg"
 printf '#!/bin/sh\necho 0\n' >"$T/bin/osascript"
+printf '#!/bin/sh\nexit 1\n' >"$T/bin/pgrep"   # no SSH logins
 cat >"$T/bin/launchctl" <<EOF
 #!/bin/sh
 echo "launchctl \$*" >>$T/log

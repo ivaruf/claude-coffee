@@ -136,14 +136,14 @@ echo closed >"$T/lid"
 if grep -qE '^systemctl .*(suspend|hibernate|sleep)' "$T/log"; then exit 1; fi; t   # ... so the hook never asks it to
 rm "$T/slept"; touch "$T/docked"; echo 2 >"$T/thermal"; fx_sync
 [ "$(hk on L)" = 1 ]; t                                               # docked (an external display): heat isn't ours ...
-fake sh "$H" status | grep -q 'lid            closed'; t               # ... though the lid is closed
+out=$(fake sh "$H" status); printf '%s\n' "$out" | grep -q 'lid            closed'; t               # ... though the lid is closed
 [ "$(hk off L)" = 0 ]; [ ! -e "$T/slept" ]; t
 rm "$T/docked"; echo 0 >"$T/thermal"; touch "$T/nobus"; fx_sync
 mkdir -p "$T/root/proc/acpi/button/lid/LID0"
 printf 'state:      closed\n' >"$T/root/proc/acpi/button/lid/LID0/state"
-fake sh "$H" status | grep -q 'lid            closed'; t               # no logind on the bus: the ACPI lid
+out=$(fake sh "$H" status); printf '%s\n' "$out" | grep -q 'lid            closed'; t               # no logind on the bus: the ACPI lid
 printf 'state:      open\n' >"$T/root/proc/acpi/button/lid/LID0/state"
-fake sh "$H" status | grep -q 'lid            open'; t
+out=$(fake sh "$H" status); printf '%s\n' "$out" | grep -q 'lid            open'; t
 rm "$T/nobus"; echo open >"$T/lid"
 printf 'Linux version 5.15.167.4-microsoft-standard-WSL2\n' >"$T/root/proc/version"; : >"$T/log"
 [ "$(hk on W)" = 0 ]; [ ! -e "$T/.claude/coffee/busy/W" ]; [ ! -s "$T/log" ]; t   # WSL: stays out of the way
