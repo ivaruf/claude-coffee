@@ -1,9 +1,9 @@
 #!/bin/sh
-# claude-coffee: keep the Mac awake, lid closed too, while any Claude Code session is mid-turn.
+# claude-coffee: keep the computer awake, lid closed too, while any Claude Code session is mid-turn.
 # https://github.com/ivaruf/claude-coffee
 #
 # usage: claude-coffee.sh on|off   Claude Code hooks (hook JSON on stdin)
-#        claude-coffee.sh check    the launch agent, every minute (reads no stdin)
+#        claude-coffee.sh check    the every-minute job (launchd, a systemd timer, Task Scheduler)
 #        claude-coffee.sh status   for you; changes nothing
 
 C=~/.claude/coffee
@@ -23,16 +23,22 @@ B=$C/low    # the battery guard tripped; goes when the Mac is plugged in or char
 mkdir -p "$D"
 
 # Platform layer: everything OS-specific is in these functions, and the logic below only calls them.
-#   held          prints 1 while sleep is switched off by us, else 0
-#   hold 1|0      switches sleep off (1) or back on (0), lid close included
+#   held          prints 1 while sleep is switched off by us, else 0. Hooks call it every time: keep it
+#                 fast (no PowerShell: a state file, a quick systemctl, pmset -g)
+#   hold 1|0      switches sleep off (1) or back on (0), lid close included. Only called on a change
 #   lid_state     prints 2 if the lid is closed and that normally means sleep, 1 if it's closed but
 #                 something keeps the machine up (an external display), 0 if open or there's no lid
 #   lid_closed    exit 0 if the lid is closed, whatever that means for sleep
-#   sleep_now     puts the machine to sleep
-#   heat          sets thermal (0-3: nominal, fair, serious, critical) and battery (°C); empty = unknown
-#   power         sets onbatt (1 on battery, else 0) and charge (%, empty without a battery)
+#   sleep_now     puts the machine to sleep, for when the OS won't by itself after "hold 0" with the
+#                 lid already closed (macOS won't; logind will, so on Linux it does nothing)
+#   heat          sets thermal (0-3: nominal, fair, serious, critical) and battery (°C); empty = unknown.
+#                 Hooks call it only with the lid closed and work going on
+#   power         sets onbatt (1 on battery, else 0) and charge (%, empty without a battery). Hooks call
+#                 it while work goes on, so it must be fast too (Windows: read the check's cache)
 #   notify TEXT   shows a desktop notification
-#   procs         prints the process table: pid ppid etime %cpu args
+#   procs         prints the process table: pid ppid etime %cpu args, where %cpu is recent use (about
+#                 the last minute), not a lifetime average, and etime is [[dd-]hh:]mm:ss. Only the check
+#                 calls it, so it may be slow
 #   ssh_logins    prints the PIDs of the user's SSH logins, exit 1 if none; login_ages PIDS: their etimes
 #   can_hold      exit 0 if hold works without a password (for status, labelled HOLD_LABEL)
 #   agent_loaded  exit 0 if the every-minute check is installed (for status, labelled AGENT_LABEL)
@@ -68,7 +74,14 @@ Darwin)
   can_hold() { sudo -k -n -l | grep -qE 'NOPASSWD: (ALL$|.*/usr/bin/pmset -a disablesleep 1)'; }
   agent_loaded() { launchctl print "gui/$(id -u)/com.github.ivaruf.claude-coffee"; }
   ;;
-*) exit 0 ;;   # not supported (yet): stay out of the way
+Linux)
+  grep -qi microsoft /proc/version 2>/dev/null && exit 0   # WSL: not supported yet
+  exit 0   # Linux backend: to do
+  ;;
+MINGW*|MSYS*|CYGWIN*)   # Windows, in Git Bash
+  exit 0   # Windows backend: to do
+  ;;
+*) exit 0 ;;   # not supported: stay out of the way
 esac
 
 case $1 in
@@ -79,7 +92,7 @@ esac
 
 # printf, not echo: macOS sh's echo expands the \n inside the JSON and jq then rejects it
 sid=$(printf '%s\n' "${json:-}" | jq -r '.session_id // empty' 2>/dev/null | tr -cd 'A-Za-z0-9_-')
-bg=$(printf '%s\n' "${json:-}" | jq '.background_tasks // [] | length' 2>/dev/null)
+bg=$(printf '%s\n' "${json:-}" | jq '.background_tasks // [] | length' 2>/dev/null | tr -cd 0-9)   # jq.exe ends lines in CRLF
 if [ -n "$sid" ]; then case $1 in
   on)  touch "$D/$sid" ;;
   # Stop with background agents or shells still running: stay awake until they report back
@@ -93,7 +106,8 @@ esac; fi
 # of them, and idle sessions start no processes (see docs/verification.md).
 claude_working() {
   procs | awk -v own="$OWN_KEEPAWAKE" '
-    { pid[NR] = $1; ppid[NR] = $2; age[NR] = $3; cpu[NR] = $4; n = split($5, p, "/"); exe[NR] = p[n]
+    { pid[NR] = $1; ppid[NR] = $2; age[NR] = $3; cpu[NR] = $4
+      n = split($5, p, /[\/\\]/); exe[NR] = p[n]; sub(/\.exe$/, "", exe[NR])   # Windows: C:\...\claude.exe
       root[NR] = exe[NR] == "claude" || $0 ~ /@anthropic-ai\/claude-code/
       if (root[NR]) under[$1] = 1 }
     END {
