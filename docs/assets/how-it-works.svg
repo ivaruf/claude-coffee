@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 660" width="960" height="660" role="img" aria-labelledby="title desc">
+  <title id="title">How claude-coffee works</title>
+  <desc id="desc">Sequence. 1: you send Claude Code a prompt. 2: the UserPromptSubmit hook runs claude-coffee.sh on. 3: claude-coffee.sh runs pmset -a disablesleep 1 and the Mac is kept awake. You close the lid and leave; Claude keeps going. 4: on every tool call, PreToolUse runs claude-coffee.sh on again. 5: when the turn ends, Stop runs claude-coffee.sh off. 6: it runs pmset -a disablesleep 0. 7: the lid is closed, so it runs pmset sleepnow and the Mac goes to sleep.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2b1b13"/>
+      <stop offset="1" stop-color="#160d09"/>
+    </linearGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e88b68"/>
+      <stop offset="1" stop-color="#cc6a49"/>
+    </linearGradient>
+    <marker id="head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#e8d6c4"/>
+    </marker>
+    <style>
+      .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .lane { font-size: 16px; font-weight: 700; fill: #fbf4ec; }
+      .msg  { font-size: 13.5px; fill: #efe2d3; }
+      .num  { font-size: 12px; font-weight: 800; fill: #1f140e; }
+      .life { stroke: #e8d6c4; stroke-opacity: .22; stroke-width: 1.5; stroke-dasharray: 4 6; }
+      .arrow { stroke: #e8d6c4; stroke-width: 2; fill: none; marker-end: url(#head); }
+    </style>
+  </defs>
+
+  <rect width="960" height="660" rx="22" fill="url(#bg)"/>
+
+  <!-- lifelines -->
+  <line class="life" x1="110" y1="96" x2="110" y2="630"/>
+  <line class="life" x1="330" y1="96" x2="330" y2="630"/>
+  <line class="life" x1="590" y1="96" x2="590" y2="630"/>
+  <line class="life" x1="850" y1="96" x2="850" y2="630"/>
+
+  <!-- lane headers -->
+  <g>
+    <rect x="40" y="30" width="140" height="56" rx="16" fill="#2b1b13" stroke="#4d3122" stroke-width="2"/>
+    <circle cx="80" cy="51" r="7" fill="#e8d6c4"/>
+    <path d="M67 72 C 67 61 93 61 93 72 Z" fill="#e8d6c4"/>
+    <text x="104" y="64" class="sans lane">You</text>
+  </g>
+  <g>
+    <rect x="236" y="30" width="188" height="56" rx="16" fill="#2b1b13" stroke="#4d3122" stroke-width="2"/>
+    <g transform="translate(270 61) scale(0.27)">
+      <rect x="-50" y="-52" width="100" height="106" rx="46" fill="url(#body)"/>
+      <path d="M-2 -51 C -8 -68 12 -76 14 -62" fill="none" stroke="#e88b68" stroke-width="9" stroke-linecap="round"/>
+      <ellipse cx="-16" cy="-10" rx="7" ry="10" fill="#2b1b13"/>
+      <ellipse cx="14" cy="-10" rx="7" ry="10" fill="#2b1b13"/>
+      <path d="M-9 10 C -4 16 2 16 7 10" fill="none" stroke="#2b1b13" stroke-width="5" stroke-linecap="round"/>
+    </g>
+    <text x="294" y="64" class="sans lane">Claude Code</text>
+  </g>
+  <g>
+    <rect x="476" y="30" width="228" height="56" rx="16" fill="#2b1b13" stroke="#4d3122" stroke-width="2"/>
+    <g transform="translate(496 47)">
+      <path d="M17 6 C 25 6 25 16 17 16" fill="none" stroke="#e9dccd" stroke-width="3.5" stroke-linecap="round"/>
+      <rect x="0" y="0" width="19" height="22" rx="4.5" fill="#fbf4ec"/>
+      <rect x="0" y="9" width="19" height="4" fill="#d2704f"/>
+    </g>
+    <text x="530" y="64" class="mono lane" font-size="15">claude-coffee.sh</text>
+  </g>
+  <g>
+    <rect x="772" y="30" width="156" height="56" rx="16" fill="#2b1b13" stroke="#4d3122" stroke-width="2"/>
+    <rect x="794" y="48" width="28" height="18" rx="3" fill="none" stroke="#e8d6c4" stroke-width="2.5"/>
+    <path d="M789 70 H827 L824 74 H792 Z" fill="#e8d6c4"/>
+    <text x="838" y="64" class="sans lane">macOS</text>
+  </g>
+
+  <!-- macOS state: awake from disablesleep 1 until sleepnow, then asleep -->
+  <rect x="844" y="236" width="12" height="352" rx="6" fill="#d2704f"/>
+  <rect x="844" y="592" width="12" height="40" rx="6" fill="#5f80d8"/>
+  <text x="866" y="412" class="sans" font-size="13" font-weight="700" fill="#e8d6c4">awake</text>
+  <g transform="translate(868 604)">
+    <circle cx="6" cy="6" r="6" fill="#e6ebff"/>
+    <circle cx="9" cy="4" r="5" fill="#1a110c"/>
+  </g>
+  <text x="884" y="615" class="sans" font-size="13" font-weight="700" fill="#e8d6c4">asleep</text>
+
+  <!-- 1 prompt -->
+  <line class="arrow" x1="122" y1="140" x2="322" y2="140"/>
+  <text x="222" y="130" text-anchor="middle" class="sans msg">prompt</text>
+  <circle cx="110" cy="140" r="12" fill="#d2704f"/><text x="110" y="144" text-anchor="middle" class="sans num">1</text>
+
+  <!-- 2 UserPromptSubmit -->
+  <line class="arrow" x1="342" y1="190" x2="582" y2="190"/>
+  <text x="462" y="180" text-anchor="middle" class="mono msg">UserPromptSubmit → on</text>
+  <circle cx="330" cy="190" r="12" fill="#d2704f"/><text x="330" y="194" text-anchor="middle" class="sans num">2</text>
+
+  <!-- 3 disablesleep 1 -->
+  <line class="arrow" x1="602" y1="240" x2="836" y2="240"/>
+  <text x="722" y="230" text-anchor="middle" class="mono msg">pmset -a disablesleep 1</text>
+  <circle cx="590" cy="240" r="12" fill="#d2704f"/><text x="590" y="244" text-anchor="middle" class="sans num">3</text>
+
+  <!-- note: lid closes -->
+  <rect x="60" y="272" width="740" height="46" rx="14" fill="#d2704f" fill-opacity=".13" stroke="#d2704f" stroke-opacity=".45" stroke-width="1.5"/>
+  <g transform="translate(212 290)">
+    <rect x="0" y="0" width="34" height="7" rx="3" fill="#cfc6bd"/>
+    <rect x="0" y="4" width="34" height="1.5" fill="#9a928b"/>
+  </g>
+  <text x="258" y="300" class="sans" font-size="14.5" font-weight="600" fill="#fbf4ec">You close the lid and leave. Claude keeps going.</text>
+
+  <!-- loop: every tool call -->
+  <rect x="290" y="340" width="340" height="96" rx="14" fill="none" stroke="#e8d6c4" stroke-opacity=".4" stroke-width="1.5" stroke-dasharray="5 5"/>
+  <rect x="304" y="330" width="116" height="22" rx="11" fill="#3a2418" stroke="#e8d6c4" stroke-opacity=".4"/>
+  <text x="362" y="345" text-anchor="middle" class="sans" font-size="12" font-weight="600" fill="#e8d6c4">every tool call</text>
+  <line class="arrow" x1="342" y1="402" x2="582" y2="402"/>
+  <text x="462" y="392" text-anchor="middle" class="mono msg">PreToolUse → on (still busy)</text>
+  <circle cx="330" cy="402" r="12" fill="#d2704f"/><text x="330" y="406" text-anchor="middle" class="sans num">4</text>
+
+  <!-- 5 Stop -->
+  <line class="arrow" x1="342" y1="480" x2="582" y2="480"/>
+  <text x="462" y="470" text-anchor="middle" class="mono msg">Stop → off</text>
+  <circle cx="330" cy="480" r="12" fill="#d2704f"/><text x="330" y="484" text-anchor="middle" class="sans num">5</text>
+
+  <!-- 6 disablesleep 0 -->
+  <line class="arrow" x1="602" y1="530" x2="836" y2="530"/>
+  <text x="722" y="520" text-anchor="middle" class="mono msg">pmset -a disablesleep 0</text>
+  <circle cx="590" cy="530" r="12" fill="#d2704f"/><text x="590" y="534" text-anchor="middle" class="sans num">6</text>
+
+  <!-- 7 sleepnow -->
+  <line class="arrow" x1="602" y1="590" x2="836" y2="590"/>
+  <text x="722" y="580" text-anchor="middle" class="mono msg">lid closed → pmset sleepnow</text>
+  <circle cx="590" cy="590" r="12" fill="#5f80d8"/><text x="590" y="594" text-anchor="middle" class="sans num">7</text>
+</svg>

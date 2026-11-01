@@ -30,7 +30,7 @@ You ask Claude Code for a big refactor, close the lid, and walk to a meeting. ma
 **claude-coffee ties sleep to what Claude is actually doing.** A handful of Claude Code hooks keep track of every session that is mid-turn. While any of them is working, the Mac stays awake, lid closed included. When the last one finishes, sleep comes back, and if the lid is already shut, the Mac goes to sleep about a second later.
 
 <p align="center">
-  <img src="docs/assets/brewing.svg" alt="Claude sips coffee next to an open MacBook while Claude Code works: Brewing, 12 minutes 40 seconds. A coffee cup in the menu bar shows the Mac is being kept awake." width="100%">
+  <img src="docs/assets/brewing.svg" alt="An open MacBook between a plant and a steaming mug, with Claude Code at work: Brewing, 12 minutes 40 seconds. A coffee cup in the menu bar shows the Mac is being kept awake." width="100%">
 </p>
 
 ## Why not caffeinate or Amphetamine?
@@ -110,24 +110,9 @@ Re-running `./install.sh` is safe; it's also how you update. macOS will show a n
 
 ## How it works
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor You
-    participant CC as Claude Code
-    participant Hook as claude-coffee.sh
-    participant Mac as macOS
-    You->>CC: prompt
-    CC->>Hook: UserPromptSubmit → on
-    Hook->>Mac: pmset disablesleep 1
-    Note over You,Mac: You close the lid and leave. Claude keeps going.
-    loop every tool call
-        CC->>Hook: PreToolUse → on (still busy)
-    end
-    CC->>Hook: Stop → off
-    Hook->>Mac: pmset disablesleep 0
-    Hook->>Mac: lid is closed → pmset sleepnow
-```
+<p align="center">
+  <img src="docs/assets/how-it-works.svg" alt="Sequence: 1, you send Claude Code a prompt. 2, the UserPromptSubmit hook runs claude-coffee.sh on. 3, it runs pmset -a disablesleep 1, and the Mac is kept awake. You close the lid and leave; Claude keeps going. 4, on every tool call, PreToolUse runs it on again. 5, when the turn ends, Stop runs it off. 6, it runs pmset -a disablesleep 0. 7, the lid is closed, so it runs pmset sleepnow and the Mac goes to sleep." width="100%">
+</p>
 
 1. **One marker per busy session.** Hooks keep a file per session in `~/.claude/coffee/busy/`. `UserPromptSubmit` and `PreToolUse` create or refresh it; `Stop`, `StopFailure` and `SessionEnd` remove it. A `Stop` that still lists `background_tasks` keeps it.
 2. **Any marker means awake.** If any marker exists, the script runs `pmset -a disablesleep 1`; if none do, `0`. That is the one switch that also holds with the lid closed.
