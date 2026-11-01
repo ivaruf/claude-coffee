@@ -2,9 +2,9 @@
 
 claude-coffee was built on a real Mac on 2026-10-31: a MacBook Pro on macOS 26.6.2, Apple silicon, OpenSSH 10.3. Every assumption the design depends on was checked against the docs or the hardware. This is the record, warts included.
 
-## The two bugs real hardware found
+## The bugs real hardware found
 
-Both passed a first round of reasoning and only failed on the machine. Both are now covered by `tests/hook.test.sh`.
+Each passed a first round of reasoning and only failed on the machine. All are now covered by `tests/hook.test.sh`.
 
 ### 1. `Stop` didn't remove the marker
 
@@ -18,6 +18,12 @@ The kernel logged `System sleep prevented by kPMUserDisabledAllSleep` when the l
 
 **Fix:** when the last session finishes, the lid is closed and closing the lid normally causes sleep, wait a second and run `pmset sleepnow`. Verified: `sleep reason Software Sleep`, requested by `pmset`, 1.1 s after re-enabling. `pmset sleepnow` works without root.
 
+### 3. `pmset -g` doesn't always leave the line out
+
+On 2026-10-31, `pmset -g` printed no `SleepDisabled` line when the value was 0. On 2026-11-01 it printed `SleepDisabled 0`. The check added before `sleepnow` (to catch a turn starting during that second) and the uninstaller's "is sleep back on?" check both only looked for the line. So with the line present at 0, `sleepnow` was skipped, and fix 2 quietly stopped working. It turned up when the uninstall steps reported sleep as still off right after switching it on.
+
+**Fix:** read the value, never whether the line is there. The fake `pmset` in the tests now prints `SleepDisabled 0`, with one case for the no-line form.
+
 ## Assumptions
 
 | Assumption | Result |
@@ -30,7 +36,7 @@ The kernel logged `System sleep prevented by kPMUserDisabledAllSleep` when the l
 | Hook output stays out of Claude's context | The script prints nothing to stdout, and a test fails if it does. The docs say stderr on exit 0 is never shown to Claude. |
 | Running sessions pick up a hook edit | Yes. The marker appeared in the running session right after the edit. |
 | `pmset disablesleep` exists on macOS 26 | Yes. It's in the `pmset` binary but missing from `man pmset`. |
-| `pmset -g` shows `SleepDisabled` | It shows ` SleepDisabled		1` when the value is 1 and no line at all when it's 0. The script treats a missing line as "re-apply 0", so it can't get stuck awake. |
+| `pmset -g` shows `SleepDisabled` | ` SleepDisabled		1` when the value is 1. For 0 it showed no line on 2026-10-31 and ` SleepDisabled		0` on 2026-11-01 (bug 3). The script reads the value and treats a missing line as 0. |
 | The launch agent can use passwordless sudo | Yes. Reset to 0 by hand, ran `launchctl kickstart`, and it was back to `Yes` within 2 s with exit code 0. |
 | `jq` under launchd | `/usr/bin/jq` is on launchd's default `PATH`. `check` mode doesn't read stdin, so it returns in 0.1 s even with stdin left open. |
 | `sudo -n` without the sudoers rule | Fails at once ("a password is required") without hanging. The Mac then sleeps as usual. |

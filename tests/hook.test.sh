@@ -8,7 +8,8 @@ trap 'rc=$?; rm -rf "$T"; [ "$rc" = 0 ] || echo "hook: check $((n + 1)) failed" 
 mkdir "$T/bin"; echo 0 >"$T/state"
 cat >"$T/bin/pmset" <<EOF
 #!/bin/sh
-if [ "\$1" = -g ]; then [ "\$(cat $T/state)" = 1 ] && printf ' SleepDisabled\t\t1\n'; exit 0; fi
+# Real pmset prints "SleepDisabled 0" or, on some days, no line at all for 0; $T/noline picks the latter
+if [ "\$1" = -g ]; then [ -e $T/noline ] && [ "\$(cat $T/state)" = 0 ] && exit 0; printf ' SleepDisabled\t\t%s\n' "\$(cat $T/state)"; exit 0; fi
 if [ "\$1" = sleepnow ]; then touch $T/slept; exit 0; fi
 echo "\$3" >$T/state
 EOF
@@ -73,6 +74,9 @@ echo Yes >"$T/lid"
 [ ! -e "$T/slept" ]; t              # lid closed mid-turn: stays awake
 [ "$(hook off F)" = 0 ]
 [ -e "$T/slept" ]; t                # last turn ends with the lid closed: sleep now
+rm "$T/slept"; touch "$T/noline"; hook on F >/dev/null
+[ "$(hook off F)" = 0 ]; [ -e "$T/slept" ]; t   # ... also when pmset shows no SleepDisabled line for 0
+rm "$T/noline"
 rm "$T/slept"; hook on F >/dev/null
 echo "touch $T/.claude/coffee/busy/F2" >"$T/during-sleep"
 [ "$(hook off F)" = 0 ]; [ ! -e "$T/slept" ]; t     # a turn starts during the 1 s wait: no sleepnow

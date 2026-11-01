@@ -180,7 +180,7 @@ Sources and measurements are in the [field notes](docs/verification.md#heat-guar
 ## Verify it yourself
 
 ```sh
-pmset -g | grep SleepDisabled            # mid-turn: "SleepDisabled 1"; idle: no line at all
+pmset -g | grep SleepDisabled            # mid-turn: "SleepDisabled 1"; idle: "SleepDisabled 0" or no line
 ls ~/.claude/coffee/busy                 # sessions that are mid-turn right now
 launchctl kickstart gui/$(id -u)/com.github.ivaruf.claude-coffee   # run the 5-minute check now
 

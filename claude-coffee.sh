@@ -81,7 +81,7 @@ elif [ "$want" = 1 ] && [ "$HEAT_GUARD" = 1 ] && [ "$1" != status ]; then
 fi
 [ "$hot" = 1 ] && want=0
 
-# SleepDisabled is missing from pmset -g when it is 0
+# pmset -g shows "SleepDisabled 1", "SleepDisabled 0", or no line when it is 0: read the value, never the line
 have=$(pmset -g | awk '/SleepDisabled/{print $2}')
 
 if [ "$1" = status ]; then
@@ -124,7 +124,7 @@ if [ "$want" = 0 ] && [ "$have" = 1 ] && [ "$lid" = 2 ]; then
   sleep 1
   # Unless it's too hot: a turn may have started during that second (a marker, or another hook's
   # disablesleep 1). Then stay up
-  if [ "$hot" = 1 ] || { [ -z "$(ls "$D")" ] && ! pmset -g | grep -q SleepDisabled; }; then
+  if [ "$hot" = 1 ] || { [ -z "$(ls "$D")" ] && [ "$(pmset -g | awk '/SleepDisabled/{print $2}')" != 1 ]; }; then
     pmset sleepnow >/dev/null 2>&1
   fi
 fi

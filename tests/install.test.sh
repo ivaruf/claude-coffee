@@ -14,7 +14,7 @@ exit 0
 EOF
 cat >"$T/bin/pmset" <<EOF
 #!/bin/sh
-[ "\$1" = -g ] && [ "\$(cat $T/state)" = 1 ] && printf ' SleepDisabled\t\t1\n'
+[ "\$1" = -g ] && printf ' SleepDisabled\t\t%s\n' "\$(cat $T/state)"
 exit 0
 EOF
 printf '#!/bin/sh\necho "      \\"AppleClamshellState\\" = No"\n' >"$T/bin/ioreg"

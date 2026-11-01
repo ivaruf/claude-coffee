@@ -38,7 +38,7 @@ step script removed
 
 # 4. Sleep back to normal while the passwordless rule still exists, and check that it took
 sudo -n /usr/bin/pmset -a disablesleep 0 >/dev/null 2>&1
-if pmset -g | grep -q SleepDisabled; then
+if [ "$(pmset -g | awk '/SleepDisabled/{print $2}')" = 1 ]; then   # the value: the line can read 0
   fail sleep "still switched off; run: sudo pmset -a disablesleep 0"
 else
   step sleep "back to normal"

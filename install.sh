@@ -46,7 +46,7 @@ visudo -cf "$t" >/dev/null || { rm -f "$t"; die "visudo rejected the sudoers rul
 if [ -e "$SUDOERS" ]; then
   step sudoers "$SUDOERS (already there)"
 else
-  printf '    sudo asks for your password once, to allow only: pmset -a disablesleep 0|1\n'
+  printf '    sudo may ask for your password, to allow only: pmset -a disablesleep 0|1\n'
   if sudo install -m 0440 -o root -g wheel "$t" "$SUDOERS"; then step sudoers "$SUDOERS"
   else warn sudoers "skipped: without it the Mac just sleeps as usual. Re-run to retry"; fi
 fi
