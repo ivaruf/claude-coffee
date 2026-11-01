@@ -22,6 +22,55 @@ H=$C/hot    # the heat guard tripped; stays until the lid opens
 B=$C/low    # the battery guard tripped; goes when the Mac is plugged in or charged above LOW_BATTERY
 mkdir -p "$D"
 
+# Platform layer: everything OS-specific is in these functions, and the logic below only calls them.
+#   held          prints 1 while sleep is switched off by us, else 0
+#   hold 1|0      switches sleep off (1) or back on (0), lid close included
+#   lid_state     prints 2 if the lid is closed and that normally means sleep, 1 if it's closed but
+#                 something keeps the machine up (an external display), 0 if open or there's no lid
+#   lid_closed    exit 0 if the lid is closed, whatever that means for sleep
+#   sleep_now     puts the machine to sleep
+#   heat          sets thermal (0-3: nominal, fair, serious, critical) and battery (°C); empty = unknown
+#   power         sets onbatt (1 on battery, else 0) and charge (%, empty without a battery)
+#   notify TEXT   shows a desktop notification
+#   procs         prints the process table: pid ppid etime %cpu args
+#   ssh_logins    prints the PIDs of the user's SSH logins, exit 1 if none; login_ages PIDS: their etimes
+#   can_hold      exit 0 if hold works without a password (for status, labelled HOLD_LABEL)
+#   agent_loaded  exit 0 if the every-minute check is installed (for status, labelled AGENT_LABEL)
+#   OWN_KEEPAWAKE the helper Claude Code itself runs during a turn (macOS: caffeinate), or empty
+#   MACHINE       what to call the computer in notifications
+case $(uname -s) in
+Darwin)
+  MACHINE=Mac OWN_KEEPAWAKE=caffeinate HOLD_LABEL='sudo pmset' AGENT_LABEL='launch agent'
+  # pmset -g shows "SleepDisabled 1", "SleepDisabled 0", or no line for 0: read the value, never the line
+  held() { pmset -g | awk '/SleepDisabled/ { v = $2 } END { print (v == 1) ? 1 : 0 }'; }
+  hold() { sudo -n /usr/bin/pmset -a disablesleep "$1" >/dev/null; }
+  lid_state() { ioreg -r -k AppleClamshellState -d 1 | grep -cE '"AppleClamshell(State|CausesSleep)" = Yes'; }
+  lid_closed() { ioreg -r -k AppleClamshellState -d 1 | grep -q '"AppleClamshellState" = Yes'; }
+  sleep_now() { pmset sleepnow >/dev/null 2>&1; }
+  # Thermal state and battery °C; neither needs root. The battery's "Temperature" is in 0.1 K (see
+  # docs/verification.md); "VirtualTemperature" is a model
+  heat() {
+    thermal=$(osascript -l JavaScript -e 'ObjC.import("Foundation"); $.NSProcessInfo.processInfo.thermalState' 2>/dev/null | tr -cd 0-9)
+    battery=$(ioreg -r -n AppleSmartBattery -d 1 | awk '/"Temperature" = / { print int($3 / 10 - 273.15) }')
+  }
+  power() {
+    b=$(pmset -g batt)
+    case $b in *"'Battery Power'"*) onbatt=1 ;; *) onbatt=0 ;; esac
+    charge=$(printf '%s\n' "$b" | grep -oE '[0-9]+%' | head -n 1 | tr -d %)
+  }
+  notify() { osascript -e "display notification \"$1\" with title \"claude-coffee\"" >/dev/null 2>&1; }
+  procs() { ps -A -o pid=,ppid=,etime=,%cpu=,args=; }
+  # The user-owned "sshd-session: you@ttysNNN" (OpenSSH 9.8+) or "sshd: you@ttysNNN" (older); the
+  # root-owned "[priv]" process has no @
+  ssh_logins() { pgrep -u "$(id -u)" -f '^sshd(-session)?: [^ ]+@'; }
+  login_ages() { ps -o etime= -p "$(printf '%s' "$1" | tr '\n' ,)"; }
+  # -k: with cached credentials "sudo -n" passes for any admin; only a NOPASSWD rule should count
+  can_hold() { sudo -k -n -l | grep -qE 'NOPASSWD: (ALL$|.*/usr/bin/pmset -a disablesleep 1)'; }
+  agent_loaded() { launchctl print "gui/$(id -u)/com.github.ivaruf.claude-coffee"; }
+  ;;
+*) exit 0 ;;   # not supported (yet): stay out of the way
+esac
+
 case $1 in
   on|off) json=$(cat); touch "$L" ;;
   check|status) ;;
@@ -43,7 +92,7 @@ esac; fi
 # 2 minutes (a build spawning compilers, each gone too fast to show CPU). An idle dev server shows none
 # of them, and idle sessions start no processes (see docs/verification.md).
 claude_working() {
-  ps -A -o pid=,ppid=,etime=,%cpu=,args= | awk '
+  procs | awk -v own="$OWN_KEEPAWAKE" '
     { pid[NR] = $1; ppid[NR] = $2; age[NR] = $3; cpu[NR] = $4; n = split($5, p, "/"); exe[NR] = p[n]
       root[NR] = exe[NR] == "claude" || $0 ~ /@anthropic-ai\/claude-code/
       if (root[NR]) under[$1] = 1 }
@@ -53,7 +102,7 @@ claude_working() {
       } while (grew)
       for (i = 1; i <= NR; i++) if (under[pid[i]] && !root[i]) {
         n = split(age[i], a, /[-:]/)   # [[dd-]hh:]mm:ss
-        if (exe[i] == "caffeinate" || cpu[i] + 0 >= 10 || (n == 2 && a[1] + 0 < 2)) exit 0
+        if ((own != "" && exe[i] == own) || cpu[i] + 0 >= 10 || (n == 2 && a[1] + 0 < 2)) exit 0
       }
       exit 1
     }'
@@ -70,14 +119,12 @@ want=0; [ "$busy" = 0 ] || want=1
 
 # Remote mode: while you're logged in over SSH (say, from your phone), also stay awake between turns
 # so the next prompt can arrive. It lapses REMOTE_MINUTES after the later of the last hook event and
-# the login, so a dead or forgotten connection can't keep the Mac up for good. The login is the
-# user-owned "sshd-session: you@ttysNNN" (OpenSSH 9.8+) or "sshd: you@ttysNNN" (older); the
-# root-owned "[priv]" process has no @.
+# the login, so a dead or forgotten connection can't keep the Mac up for good.
 remote=0
-if [ "$REMOTE" = 1 ] && ssh=$(pgrep -u "$(id -u)" -f '^sshd(-session)?: [^ ]+@'); then
+if [ "$REMOTE" = 1 ] && ssh=$(ssh_logins); then
   remote=1
   if [ -n "$(find "$L" -mmin -"$REMOTE_MINUTES" 2>/dev/null)" ] ||
-     ps -o etime= -p "$(printf '%s' "$ssh" | tr '\n' ,)" | awk -v m="$REMOTE_MINUTES" '
+     login_ages "$ssh" | awk -v m="$REMOTE_MINUTES" '
        { n = split($1, t, /[-:]/); if (t[n] + 60*t[n-1] + 3600*t[n-2] + 86400*t[n-3] < m*60) young = 1 }
        END { exit !young }'; then
     remote=2; want=1
@@ -85,17 +132,12 @@ if [ "$REMOTE" = 1 ] && ssh=$(pgrep -u "$(id -u)" -f '^sshd(-session)?: [^ ]+@')
 fi
 
 # 2 = the lid is closed and that normally means sleep (no external display keeping the Mac up)
-lid=$(ioreg -r -k AppleClamshellState -d 1 | grep -cE '"AppleClamshell(State|CausesSleep)" = Yes')
+lid=$(lid_state)
 
 # Heat guard: a closed Mac that keeps working in a bag can't get rid of its heat. With the lid
 # closed, macOS reporting serious thermal pressure or a battery at HOT_BATTERY_C allows sleep and
 # sleeps now, even mid-turn. It stays tripped until the lid opens, so a dark wake in the bag can't
 # start the heat up again. With the lid open, heat is macOS's own business.
-heat() {   # thermal state 0-3 (nominal, fair, serious, critical) and battery °C; neither needs root.
-  # The battery's "Temperature" is in 0.1 K (see docs/verification.md); "VirtualTemperature" is a model
-  thermal=$(osascript -l JavaScript -e 'ObjC.import("Foundation"); $.NSProcessInfo.processInfo.thermalState' 2>/dev/null | tr -cd 0-9)
-  battery=$(ioreg -r -n AppleSmartBattery -d 1 | awk '/"Temperature" = / { print int($3 / 10 - 273.15) }')
-}
 hot=0
 if [ "$lid" != 2 ]; then
   [ "$1" = status ] || rm -f "$H"
@@ -106,7 +148,7 @@ elif [ "$want" = 1 ] && [ "$HEAT_GUARD" = 1 ] && [ "$1" != status ]; then
   if [ "${thermal:-0}" -ge 2 ] || [ "${battery:-0}" -ge "$HOT_BATTERY_C" ]; then
     hot=1
     echo "$(date '+%Y-%m-%d %H:%M'), thermal state ${thermal:-?}, battery ${battery:-?} °C" >"$H"
-    osascript -e 'display notification "Your Mac got hot with the lid closed, so it went to sleep. Open the lid to carry on." with title "claude-coffee"' >/dev/null 2>&1
+    notify "Your $MACHINE got hot with the lid closed, so it went to sleep. Open the lid to carry on."
   fi
 fi
 [ "$hot" = 1 ] && want=0
@@ -114,11 +156,6 @@ fi
 # Battery guard: with sleep switched off, a Mac on battery could run itself flat (macOS starts warning
 # at about 10% that it will sleep soon, and disablesleep may keep it from doing so). On battery at
 # LOW_BATTERY % or less: stop keeping it awake and, with the lid closed, sleep now. Plugging in clears it.
-power() {   # on battery (1/0) and the charge in %, from pmset -g batt
-  b=$(pmset -g batt)
-  case $b in *"'Battery Power'"*) onbatt=1 ;; *) onbatt=0 ;; esac
-  charge=$(printf '%s\n' "$b" | grep -oE '[0-9]+%' | head -n 1 | tr -d %)
-}
 low=0
 if [ "$LOW_BATTERY" -gt 0 ] && { [ "$want" = 1 ] || [ -e "$B" ]; } && [ "$1" != status ]; then
   power
@@ -127,7 +164,7 @@ if [ "$LOW_BATTERY" -gt 0 ] && { [ "$want" = 1 ] || [ -e "$B" ]; } && [ "$1" != 
       low=1; want=0
       if [ ! -e "$B" ]; then
         echo "$(date '+%Y-%m-%d %H:%M'), battery at $charge%" >"$B"
-        osascript -e "display notification \"Battery at $charge%, so claude-coffee stopped keeping your Mac awake. Plug it in to carry on.\" with title \"claude-coffee\"" >/dev/null 2>&1
+        notify "Battery at $charge%, so claude-coffee stopped keeping your $MACHINE awake. Plug it in to carry on."
       fi
     fi
   else
@@ -135,16 +172,12 @@ if [ "$LOW_BATTERY" -gt 0 ] && { [ "$want" = 1 ] || [ -e "$B" ]; } && [ "$1" != 
   fi
 fi
 
-# pmset -g shows "SleepDisabled 1", "SleepDisabled 0", or no line when it is 0: read the value, never the line
-have=$(pmset -g | awk '/SleepDisabled/{print $2}')
+have=$(held)
 
 if [ "$1" = status ]; then
-  ok() { if "$@" >/dev/null 2>&1; then echo ok; else echo "missing (run install.sh)"; fi; }
-  # -k: with cached credentials "sudo -n" passes for any admin; only a NOPASSWD rule should count
-  # shellcheck disable=SC2317  # called through ok()
-  nopasswd() { sudo -k -n -l | grep -qE 'NOPASSWD: (ALL$|.*/usr/bin/pmset -a disablesleep 1)'; }
+  ok() { if [ "$1" = 0 ]; then echo ok; else echo "missing (run install.sh)"; fi; }
   s=allowed; [ "$have" = 1 ] && s=blocked
-  [ "$want" = "${have:-0}" ] || s="$s (the next hook or check flips it)"
+  [ "$want" = "$have" ] || s="$s (the next hook or check flips it)"
   case $remote in
     0) r='off (no SSH login)' ;;
     1) r="lapsed (SSH login, but quiet for $REMOTE_MINUTES min)" ;;
@@ -161,7 +194,7 @@ if [ "$1" = status ]; then
   printf '  sleep          %s\n' "$s"
   printf '  busy sessions  %s\n' "$busy"
   printf '  remote mode    %s\n' "$r"
-  printf '  lid            %s\n' "$(if ioreg -r -k AppleClamshellState -d 1 | grep -q '"AppleClamshellState" = Yes'; then echo closed; else echo open; fi)"
+  printf '  lid            %s\n' "$(if lid_closed; then echo closed; else echo open; fi)"
   printf '  heat           %s\n' "$h"
   printf '  heat guard     %s\n' "$g"
   power
@@ -171,12 +204,12 @@ if [ "$1" = status ]; then
   else bg='disabled in config'; fi
   printf '  power          %s\n' "$p"
   printf '  battery guard  %s\n' "$bg"
-  printf '  sudo pmset     %s\n' "$(ok nopasswd)"
-  printf '  launch agent   %s\n' "$(ok launchctl print "gui/$(id -u)/com.github.ivaruf.claude-coffee")"
+  can_hold >/dev/null 2>&1; printf '  %-14s %s\n' "$HOLD_LABEL" "$(ok $?)"
+  agent_loaded >/dev/null 2>&1; printf '  %-14s %s\n' "$AGENT_LABEL" "$(ok $?)"
   exit 0
 fi
 
-[ "$want" = "${have:-0}" ] || sudo -n /usr/bin/pmset -a disablesleep "$want" >/dev/null
+[ "$want" = "$have" ] || hold "$want"
 
 # macOS decides on lid sleep only when the lid closes. If it closed while sleep was disabled,
 # re-enabling sleep leaves the Mac awake, so sleep now. Skipped when an external display keeps a
@@ -185,8 +218,8 @@ if [ "$want" = 0 ] && [ "$have" = 1 ] && [ "$lid" = 2 ]; then
   sleep 1
   # Unless a guard tripped: a turn may have started during that second (a marker, or another hook's
   # disablesleep 1). Then stay up
-  if [ "$hot" = 1 ] || [ "$low" = 1 ] || { [ -z "$(ls "$D")" ] && [ "$(pmset -g | awk '/SleepDisabled/{print $2}')" != 1 ]; }; then
-    pmset sleepnow >/dev/null 2>&1
+  if [ "$hot" = 1 ] || [ "$low" = 1 ] || { [ -z "$(ls "$D")" ] && [ "$(held)" != 1 ]; }; then
+    sleep_now
   fi
 fi
 exit 0
