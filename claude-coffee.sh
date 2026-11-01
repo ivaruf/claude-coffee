@@ -8,7 +8,7 @@
 
 C=~/.claude/coffee
 STALE_MINUTES=30    # drop a marker no hook has touched for this long (Esc never fires Stop) ...
-MAX_QUIET_HOURS=4   # ... unless Claude Code is still at work (one long tool call); this caps that
+MAX_QUIET_HOURS=4   # ... unless Claude Code is still at work (a long tool call, a build); this caps that
 REMOTE=1            # 0 = no remote mode
 REMOTE_MINUTES=60   # remote mode lapses this long after the last hook event and the SSH login
 HEAT_GUARD=1        # 0 = never let heat end a turn early
@@ -37,19 +37,33 @@ if [ -n "$sid" ]; then case $1 in
   off) if [ "${bg:-0}" -gt 0 ]; then touch "$D/$sid"; else rm -f "$D/$sid"; fi ;;
 esac; fi
 
-# Claude Code runs its own "caffeinate -i -t 300" while a turn is in progress and renews it about every
-# 4 minutes, also through one long tool call that fires no hooks; it stops it when the turn ends (see
-# docs/verification.md). So while one runs as a child of Claude Code, a quiet marker isn't stale yet.
+# Is Claude Code still at work, though no hook has fired for a while? Signs, among the processes under
+# any Claude Code: its own "caffeinate" (it keeps one through a turn in progress, one long tool call
+# included), one using 10% CPU or more (a background build, a test run), or one started in the last
+# 2 minutes (a build spawning compilers, each gone too fast to show CPU). An idle dev server shows none
+# of them, and idle sessions start no processes (see docs/verification.md).
 claude_working() {
-  for k in $(pgrep -x caffeinate); do
-    ps -o args= -p "$(ps -o ppid= -p "$k" | tr -d ' ')" 2>/dev/null | grep -q claude && return 0
-  done
-  return 1
+  ps -A -o pid=,ppid=,etime=,%cpu=,args= | awk '
+    { pid[NR] = $1; ppid[NR] = $2; age[NR] = $3; cpu[NR] = $4; n = split($5, p, "/"); exe[NR] = p[n]
+      root[NR] = exe[NR] == "claude" || $0 ~ /@anthropic-ai\/claude-code/
+      if (root[NR]) under[$1] = 1 }
+    END {
+      do { grew = 0
+           for (i = 1; i <= NR; i++) if (under[ppid[i]] && !under[pid[i]]) { under[pid[i]] = 1; grew = 1 }
+      } while (grew)
+      for (i = 1; i <= NR; i++) if (under[pid[i]] && !root[i]) {
+        n = split(age[i], a, /[-:]/)   # [[dd-]hh:]mm:ss
+        if (exe[i] == "caffeinate" || cpu[i] + 0 >= 10 || (n == 2 && a[1] + 0 < 2)) exit 0
+      }
+      exit 1
+    }'
 }
+# Only the launch agent's check looks: it runs outside Claude Code, whereas a hook would count itself
+# as a young process. Hooks go by the check's verdict, if it's from the last 2 minutes.
+W=$C/working
+if [ "$1" = check ]; then if claude_working; then touch "$W"; else rm -f "$W"; fi; fi
 limit=$STALE_MINUTES
-if [ -n "$(find "$D" -type f -mmin +"$STALE_MINUTES")" ] && claude_working; then
-  limit=$((MAX_QUIET_HOURS * 60))
-fi
+[ -n "$(find "$W" -mmin -2 2>/dev/null)" ] && limit=$((MAX_QUIET_HOURS * 60))
 [ "$1" = status ] || find "$D" -type f -mmin +"$limit" -delete
 busy=$(find "$D" -type f ! -mmin +"$limit" | wc -l | tr -d ' ')
 want=0; [ "$busy" = 0 ] || want=1

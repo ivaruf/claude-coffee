@@ -7,7 +7,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Added
 
 - Battery guard: on battery at 20% or less (`LOW_BATTERY`), claude-coffee stops keeping the Mac awake, even mid-turn, and with the lid closed the Mac sleeps right away. It leaves one notification, and plugging in clears it. `status` shows the power source and charge.
-- Long tool calls: a marker no hook has touched for 30 minutes now stays while Claude Code itself is still working (it keeps its own `caffeinate` running during a turn), for up to `MAX_QUIET_HOURS` (4).
+- Long jobs: a marker no hook has touched for 30 minutes now stays, for up to `MAX_QUIET_HOURS` (4), while Claude Code is still at work. That means its own `caffeinate` is running (a long tool call), or processes it started use CPU or start new ones (a background build). An idle dev server doesn't count.
 - Install and uninstall straight from GitHub: `curl -fsSL https://raw.githubusercontent.com/ivaruf/claude-coffee/main/install.sh | sh`. Without a clone, the installer downloads `claude-coffee.sh` from the same branch. Both scripts run only once they're fully downloaded.
 - Heat guard: with the lid closed, serious thermal pressure or a battery at 45 °C (`HOT_BATTERY_C`) puts the Mac to sleep, even mid-turn, and keeps it there until the lid opens. It leaves a notification saying why. `HEAT_GUARD=0` turns it off.
 - `status` shows the battery temperature, the thermal state and the heat guard.

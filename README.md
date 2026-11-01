@@ -92,7 +92,7 @@ macOS then reports that *claude-coffee.sh can run in the background*: that's the
 
 - **Lid closed, on battery, many sessions**: awake while any Claude Code session is mid-turn
 - **Sleeps when done**: no toggle or timer; a lid closed mid-turn sleeps a second after the last turn ends
-- **Long jobs**: one tool call can run for up to 4 hours, and background agents keep the Mac up while they work
+- **Long jobs**: a long tool call or a busy background build keeps the Mac up, for up to 4 hours; an idle dev server doesn't
 - **Remote mode**: logged in over SSH, say from your phone, the Mac also stays up between turns
 - **Heat and battery guards**: too hot with the lid closed, or low on battery, and it sleeps anyway
 - **Can't get stuck awake**: markers expire, and a launch agent re-checks every minute
@@ -109,7 +109,7 @@ macOS then reports that *claude-coffee.sh can run in the background*: that's the
 1. Hooks keep one marker file per busy session. `UserPromptSubmit` and `PreToolUse` create it; `Stop`, `StopFailure` and `SessionEnd` remove it, unless background tasks are still running.
 2. Any marker means `pmset -a disablesleep 1`, the one switch that holds with the lid closed. No marker means `0`.
 3. macOS decides on lid sleep only when the lid closes. So if it closed mid-turn, `pmset sleepnow` follows a second after the last turn ends.
-4. Esc never fires `Stop`, so a marker that no hook has touched for 30 minutes expires. The exception is one long tool call: Claude Code keeps its own `caffeinate` running for that, and the marker stays for up to 4 hours.
+4. Esc never fires `Stop`, so a marker that no hook has touched for 30 minutes expires. It stays, for up to 4 hours, while Claude Code is visibly still at work: its own `caffeinate` is running (a long tool call), or processes it started are using CPU or starting new ones (a background build). An idle dev server shows neither.
 5. The [guards](#guards) override everything above.
 
 Each rule is there because something needed it. The [field notes](docs/verification.md) record what was checked on a real Mac, including three bugs only the hardware revealed.
@@ -147,7 +147,7 @@ Optional, in `~/.claude/coffee/config`:
 
 ```sh
 STALE_MINUTES=30   # a marker no hook has touched for this long expires ...
-MAX_QUIET_HOURS=4  # ... or this long while Claude Code is still working (one long tool call)
+MAX_QUIET_HOURS=4  # ... or this long while Claude Code is still at work (a long tool call, a busy build)
 REMOTE=1           # 0 turns remote mode off
 REMOTE_MINUTES=60  # how long remote mode lasts after the last activity
 HEAT_GUARD=1       # 0 turns the heat guard off
@@ -169,7 +169,7 @@ log show --last 1h --style compact --predicate 'process == "kernel" AND eventMes
 
 ## Known limits
 
-- Background shells still running after a turn has ended are only covered for 30 minutes after the last hook, because a long background build looks just like a dev server left running. For a job that has to finish, have Claude wait for it.
+- Background work that looks idle, such as waiting on a download or a remote job, counts as finished after 30 minutes, just like an idle dev server. For a job like that, have Claude wait for it within the turn.
 - A permission prompt left unanswered for more than 30 minutes counts as finished.
 - After Esc, the Mac may stay up for about 31 minutes. That assumes Claude Code stops its `caffeinate` on Esc, which is untested.
 - Neither guard has met a real bag or a real 20% yet. A fanless MacBook Air working hard with the lid closed may trip the heat guard on a desk.

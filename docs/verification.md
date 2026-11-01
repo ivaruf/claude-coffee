@@ -87,19 +87,23 @@ Measured on 2026-11-01, same Mac, on battery.
 | Reading the charge without root | `pmset -g batt` prints `Now drawing from 'AC Power'` or `'Battery Power'`, then a line with the charge, such as `100%; finishing charge`. Desktop Macs have no battery line, so the guard never trips there. |
 | Not tested yet | A real discharge to 20%. The tests fake `pmset -g batt`. |
 
-## Long tool calls
+## Long tool calls and background jobs
 
-Measured on 2026-11-01, same Mac. The question: how to tell one long tool call (a 45-minute build) from a turn that was interrupted with Esc, when neither fires a hook.
+Measured on 2026-11-01, same Mac. The question: how to tell a long tool call or a background build from a turn interrupted with Esc, or a dev server left running, when none of them fires a hook.
 
 | Question | Result |
 |---|---|
 | Does Claude Code have its own sign of being busy? | Yes. While a turn is in progress, the `claude` process has a child `caffeinate -i -t 300` (prevent idle sleep, at most 5 minutes). |
 | Does it last through one long tool call? | Yes. During one 7-minute tool call with no hooks firing, sampled every 30 s, a `caffeinate` child was always there: Claude Code started a new one about every 4 minutes, before the old one timed out (new PIDs at 3:55 and 7:55 in). |
-| Background tasks after the turn has ended | Not covered. With the turn over and a 7-minute background task running, the `caffeinate` disappeared about 30 s after the turn ended, at 2:50 of its 5 minutes, so Claude Code stopped it. No new one followed. |
+| Background tasks after the turn has ended | `caffeinate` doesn't cover them. With the turn over and a 7-minute background task running, the `caffeinate` disappeared about 30 s after the turn ended, at 2:50 of its 5 minutes, so Claude Code stopped it. No new one followed. |
+| What background tasks look like | Child processes of the session's `claude` process. The `Stop` input lists them (`type`, `status`, and `command` for shells) but gives no process IDs. |
+| A busy job in one process | Visible as CPU time. A CPU-bound `perl` loop went from 4.2 to 19.2 s of CPU in 15 s: a full core. |
+| A build that spawns compilers | **Not** visible as CPU time: each short-lived child's CPU disappears with it. A loop running CPU-heavy `awk` processes back to back added 0.1 s to its parent in 15 s, even with `ps -S`, which is meant to add finished children's time. But a young process was always there: every sample caught one under a second old. |
+| Do idle sessions start processes? | No. 11 Claude Code sessions were open, some for 30 days. Sampled every 5 s for a minute, the 10 idle ones had no child processes at all. |
 | Esc | Not tested. Claude Code stopping `caffeinate` at the end of a normal turn suggests Esc does the same. `MAX_QUIET_HOURS` (4) caps the case where it doesn't. |
 | Telling Claude Code's `caffeinate` apart | Its parent process is `claude` (`node … claude-code …` for npm installs). A `caffeinate` you start yourself has your shell as its parent and doesn't count. |
 
-So a marker no hook has touched for 30 minutes is kept while any Claude Code process has a `caffeinate` child, for up to 4 hours. This depends on undocumented Claude Code behavior. If that changes, claude-coffee falls back to the plain 30-minute rule.
+So a marker no hook has touched for 30 minutes is kept, for up to 4 hours, while some process under a Claude Code session is its `caffeinate`, uses 10% CPU or more, or started in the last 2 minutes. An idle dev server or a `sleep` does none of that. Only the launch agent's check measures, because it runs outside Claude Code; a hook would count itself as a young process. Hooks use the check's verdict if it's from the last 2 minutes. Without the launch agent, the plain 30-minute rule applies. Parts of this depend on undocumented Claude Code behavior, and the fallback in every case is the plain 30-minute rule.
 
 ## Ideas that didn't survive
 

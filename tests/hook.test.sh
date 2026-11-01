@@ -1,5 +1,6 @@
 #!/bin/sh
 # Runs claude-coffee.sh against fake pmset, sudo, ioreg, osascript, pgrep and ps in a throwaway $HOME.
+# $T/ptable is the fake process table: pid, ppid, age, %cpu, command.
 # Your real sleep settings are never touched, so this is safe to run at any time.
 set -eu
 S=$(cd "$(dirname "$0")/.." && pwd)/claude-coffee.sh
@@ -16,21 +17,14 @@ echo "\$3" >$T/state
 EOF
 echo 'AC Power' >"$T/src"; echo 100 >"$T/pct"   # plugged in, full
 : >"$T/ssh"; echo 30-00:00:00 >"$T/etime"   # no SSH login; any login is old
-: >"$T/caf"; echo claude >"$T/parent"   # no caffeinate running; its parent would be Claude Code
+printf '  500     1  3-00:00:00  0.0 claude\n' >"$T/ptable"   # one idle Claude Code session
 cat >"$T/bin/pgrep" <<EOF
 #!/bin/sh
-case "\$*" in
-  *caffeinate*) [ -s $T/caf ] && cat $T/caf ;;
-  *) [ -s $T/ssh ] && cat $T/ssh ;;
-esac
+[ -s $T/ssh ] && cat $T/ssh
 EOF
 cat >"$T/bin/ps" <<EOF
 #!/bin/sh
-case "\$2" in
-  etime=) cat $T/etime ;;
-  ppid=) echo 777 ;;
-  args=) cat $T/parent ;;
-esac
+if [ "\$1" = -A ]; then cat $T/ptable; else cat $T/etime; fi
 EOF
 echo No >"$T/lid"; echo 3032 >"$T/batt"; echo 0 >"$T/thermal"   # battery 3032 = 303.2 K = 30 °C
 cat >"$T/bin/ioreg" <<EOF
@@ -129,14 +123,25 @@ echo 05:12 >"$T/etime"
 rm "$T/.claude/coffee/config"; : >"$T/ssh"
 [ "$(chk)" = 0 ]; t                 # logged out
 quiet() { hook on Q >/dev/null; touch -t "$(date -v-"$1" +%Y%m%d%H%M)" "$T/.claude/coffee/busy/Q"; }
+procs() { printf '  500     1  3-00:00:00  0.0 claude\n' >"$T/ptable"; printf '%s\n' "$@" >>"$T/ptable"; }
 quiet 40M; [ "$(chk)" = 0 ]; t      # 40 min without a hook and Claude Code isn't working: stale
-echo 4242 >"$T/caf"; quiet 40M
-[ "$(chk)" = 1 ]; t                 # ... but with Claude Code's caffeinate running, it's one long tool call
-echo zsh >"$T/parent"; quiet 40M
-[ "$(chk)" = 0 ]; t                 # a caffeinate that isn't Claude Code's doesn't count
-echo claude >"$T/parent"; quiet 5H
-[ "$(chk)" = 0 ]; t                 # past MAX_QUIET_HOURS even Claude Code's caffeinate doesn't help
-: >"$T/caf"
+procs '  501   500       03:10  0.0 caffeinate -i -t 300'; quiet 40M
+[ "$(chk)" = 1 ]; t                 # Claude Code's own caffeinate: one long tool call
+procs '  501   500    02:00:00  0.3 node vite --port 5173'; quiet 40M
+[ "$(chk)" = 0 ]; t                 # an idle dev server in the background: stale
+procs '  501   500       50:00 98.0 python train.py'; quiet 40M
+[ "$(chk)" = 1 ]; t                 # a background job using CPU: still at work
+procs '  501   500       12:00  0.1 make -j8' '  502   501       00:03 40.0 cc -c parser.c'; quiet 40M
+[ "$(chk)" = 1 ]; t                 # a build spawning compilers (a young process deep in the tree)
+procs '  777     1       00:05 99.0 caffeinate -d'; quiet 40M
+[ "$(chk)" = 0 ]; t                 # busy processes outside Claude Code don't count
+procs; printf '  600     1  1-00:00:00  0.0 node /opt/lib/node_modules/@anthropic-ai/claude-code/cli.js\n  601   600       50:00 99.0 cargo build\n' >>"$T/ptable"
+quiet 40M; [ "$(chk)" = 1 ]; t      # an npm-installed Claude Code counts as Claude Code
+quiet 5H; [ "$(chk)" = 0 ]; t       # past MAX_QUIET_HOURS nothing keeps a quiet marker
+quiet 40M; [ "$(chk)" = 1 ]
+quiet 40M; hook on R >/dev/null; [ -e "$T/.claude/coffee/busy/Q" ]; t   # a hook goes by the last check's verdict ...
+rm "$T/.claude/coffee/working"; hook on R >/dev/null; [ ! -e "$T/.claude/coffee/busy/Q" ]; t  # ... and without one, 30 min
+hook off R >/dev/null; procs
 echo 'Battery Power' >"$T/src"; echo 50 >"$T/pct"
 [ "$(hook on V)" = 1 ]; t           # battery guard: on battery at 50%: awake
 echo 20 >"$T/pct"; : >"$T/notified"
