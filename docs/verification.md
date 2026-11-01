@@ -115,6 +115,10 @@ The design started in a phone chat with Claude. Some first drafts were replaced 
 ```sh
 make test                               # fakes only: safe at any time
 ~/.claude/hooks/claude-coffee.sh status # the real thing, read-only
+pmset -g | grep SleepDisabled           # mid-turn "SleepDisabled 1"; idle "SleepDisabled 0" or no line
+ls ~/.claude/coffee/busy                # sessions that are mid-turn right now
 ```
 
-The lid test and the kernel log query are in the [README](../README.md#verify-it-yourself).
+**Lid test:** start a long turn and close the lid for two minutes. `pmset -g log | grep -E 'Entering Sleep|Wake from' | tail -5` should show no sleep inside that window. Leave the lid shut past the end of the turn, and an `Entering Sleep state due to 'Software Sleep pid=…'` entry follows about a second later.
+
+The kernel's own account of why the Mac did or didn't sleep is under [Troubleshooting](../README.md#troubleshooting) in the README.
