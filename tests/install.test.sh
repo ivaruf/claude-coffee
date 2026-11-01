@@ -1,11 +1,20 @@
 #!/bin/sh
-# Runs install.sh and uninstall.sh in a throwaway $HOME with fake sudo, launchctl, pmset, ioreg and osascript.
+# Runs install.sh and uninstall.sh in a throwaway $HOME with fake sudo, launchctl, pmset, ioreg, osascript
+# and curl (which serves files from this repo instead of GitHub).
 # Your real settings, sudoers and launch agents are never touched.
 set -eu
 R=$(cd "$(dirname "$0")/.." && pwd)
 T=$(mktemp -d); n=0; rc=0
 trap 'rc=$?; rm -rf "$T"; [ "$rc" = 0 ] || echo "install: check $((n + 1)) failed" >&2' EXIT
-mkdir -p "$T/bin" "$T/.claude"
+mkdir -p "$T/bin" "$T/.claude" "$T/empty"
+cat >"$T/bin/curl" <<EOF
+#!/bin/sh
+for a; do case \$a in https://*) url=\$a ;; esac; done
+while [ \$# -gt 0 ]; do [ "\$1" = -o ] && out=\$2; shift; done
+echo "curl \$url" >>$T/log
+[ -e $T/offline ] && exit 7
+if [ -e $T/portal ]; then echo "<html>Sign in to Wi-Fi</html>" >"\$out"; else cp "$R/\${url##*/}" "\$out"; fi
+EOF
 cat >"$T/bin/sudo" <<EOF
 #!/bin/sh
 echo "sudo \$*" >>$T/log
@@ -45,6 +54,7 @@ run install.sh
 # shellcheck disable=SC2088
 [ "$(jq -r '.hooks.Stop[0].hooks[0].command' "$S")" = '~/other.sh' ]; t  # other hooks kept, still first
 [ -x "$T/.claude/hooks/claude-coffee.sh" ]; t
+if grep -q '^curl' "$T/log"; then exit 1; fi; t                       # a clone installs its own copy: no download
 plutil -lint "$P" >/dev/null; t
 grep -q "<string>$T/.claude/hooks/claude-coffee.sh</string>" "$P"; t  # absolute path: launchd has no shell
 # the rule goes in, unless this Mac already has the real one
@@ -82,4 +92,17 @@ if run uninstall.sh; then exit 1; fi; t                               # uninstal
 echo '{}' >"$S"; run install.sh; echo 1 >"$T/state"; touch "$T/nosudo"
 if out=$(HOME=$T PATH="$T/bin:$PATH" sh "$R/uninstall.sh" 2>&1); then exit 1; fi; t  # restoring sleep fails ...
 printf '%s\n' "$out" | grep -q 'run: sudo pmset -a disablesleep 0'; t   # ... and it says how to fix it
+
+# curl -fsSL .../install.sh | sh: no clone next to it, so claude-coffee.sh comes from GitHub
+rm -f "$T/nosudo"; echo '{}' >"$S"
+piped() { (cd "$T/empty" && HOME=$T PATH="$T/bin:$PATH" sh <"$R/$1" >/dev/null 2>&1); }
+piped install.sh; [ "$(ours)" = 5 ]; t                                # piped install works ...
+cmp -s "$T/.claude/hooks/claude-coffee.sh" "$R/claude-coffee.sh"; t   # ... with the downloaded script
+grep -q '^curl https://raw.githubusercontent.com/ivaruf/claude-coffee/main/claude-coffee.sh$' "$T/log"; t
+rm "$T/.claude/hooks/claude-coffee.sh"; touch "$T/offline"
+if piped install.sh; then exit 1; fi; [ ! -e "$T/.claude/hooks/claude-coffee.sh" ]; t   # offline: refuses
+rm "$T/offline"; touch "$T/portal"
+if piped install.sh; then exit 1; fi; [ ! -e "$T/.claude/hooks/claude-coffee.sh" ]; t   # a Wi-Fi login page isn't installed
+rm "$T/portal"; piped install.sh
+piped uninstall.sh; [ "$(ours)" = 0 ]; [ ! -e "$T/.claude/hooks/claude-coffee.sh" ]; t  # piped uninstall works too
 echo "install: all $n checks passed"

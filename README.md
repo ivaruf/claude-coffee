@@ -32,12 +32,18 @@ You ask Claude Code for a big refactor, close the lid, and walk to a meeting. ma
 ## Quick start
 
 ```sh
+curl -fsSL https://raw.githubusercontent.com/ivaruf/claude-coffee/main/install.sh | sh
+```
+
+Or from a clone, if you'd like to read it first:
+
+```sh
 git clone https://github.com/ivaruf/claude-coffee
 cd claude-coffee
 ./install.sh
 ```
 
-The installer asks for your password once, and that's it. Running sessions pick it up on their next turn.
+Either way, the installer may ask for your password once, and that's it. Running sessions pick it up on their next turn.
 
 ```console
 $ ~/.claude/hooks/claude-coffee.sh status
@@ -65,7 +71,7 @@ claude-coffee
 | 3 | Passwordless `pmset -a disablesleep 0` and `1`, checked with `visudo` first | `/etc/sudoers.d/claude-coffee` |
 | 4 | A launch agent that runs `claude-coffee.sh check` every minute | `~/Library/LaunchAgents/com.github.ivaruf.claude-coffee.plist` |
 
-Re-running `./install.sh` is safe; it's also how you update. macOS will show a notification that *claude-coffee.sh can run in the background*. That's the launch agent; it shows up under System Settings → General → Login Items & Extensions.
+Running the installer again, either way, is safe; it's also how you update. Piped through `sh`, it downloads `claude-coffee.sh` from the same branch. macOS will show a notification that *claude-coffee.sh can run in the background*. That's the launch agent; it shows up under System Settings → General → Login Items & Extensions.
 
 **Requirements:** macOS, Claude Code, and `jq` (built into recent macOS; otherwise `brew install jq`).
 
@@ -204,8 +210,10 @@ log show --last 1h --style compact --predicate 'process == "kernel" AND eventMes
 ## Uninstall
 
 ```sh
-./uninstall.sh
+curl -fsSL https://raw.githubusercontent.com/ivaruf/claude-coffee/main/uninstall.sh | sh
 ```
+
+Or `./uninstall.sh` from a clone.
 
 It works in an order that never leaves sleep switched off. First it removes everything that could switch sleep off (the launch agent, the hooks, the script). Then it switches sleep back on and checks that it took. Then it removes the sudoers rule and the state. If a step fails, it carries on with the rest and tells you what is left. Your `settings.json` backup stays in place.
 

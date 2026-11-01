@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Install and uninstall straight from GitHub: `curl -fsSL https://raw.githubusercontent.com/ivaruf/claude-coffee/main/install.sh | sh`. Without a clone, the installer downloads `claude-coffee.sh` from the same branch. Both scripts run only once they're fully downloaded.
 - Heat guard: with the lid closed, serious thermal pressure or a battery at 45 °C (`HOT_BATTERY_C`) puts the Mac to sleep, even mid-turn, and keeps it there until the lid opens. It leaves a notification saying why. `HEAT_GUARD=0` turns it off.
 - `status` shows the battery temperature, the thermal state and the heat guard.
 
