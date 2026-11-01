@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 400" width="960" height="400" role="img" aria-labelledby="title desc">
+  <title id="title">What happens when you close the lid mid-task</title>
+  <desc id="desc">Three timelines with two moments marked: you close the lid, and later Claude finishes. caffeinate: the Mac falls asleep when the lid closes, so Claude stops mid-task. Amphetamine in closed-display mode: the Mac stays awake through the lid closing and keeps going long after Claude is done, until you turn it off. claude-coffee: awake through the lid closing, asleep a second after Claude finishes.</desc>
+  <style>
+    .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .name { font-size: 17px; font-weight: 700; fill: #fbf4ec; }
+    .sub  { font-size: 13px; fill: #a8917f; }
+    .seg  { font-size: 13px; font-weight: 700; fill: #1f140e; }
+    .note { font-size: 14.5px; fill: #e8d6c4; stroke: #1f140e; stroke-width: 8px; stroke-linejoin: round; paint-order: stroke; }
+    .event { font-size: 13.5px; font-weight: 600; fill: #e8d6c4; }
+  </style>
+
+  <rect width="960" height="400" rx="22" fill="#1f140e"/>
+
+  <!-- events -->
+  <g class="sans event" text-anchor="middle">
+    <text x="459" y="40">you close the lid</text>
+    <text x="661" y="40">Claude finishes</text>
+  </g>
+  <path d="M453 48 L459 56 L465 48 Z M655 48 L661 56 L667 48 Z" fill="#e8d6c4"/>
+  <g stroke="#e8d6c4" stroke-opacity=".28" stroke-width="1.5" stroke-dasharray="4 5">
+    <line x1="459" y1="62" x2="459" y2="356"/>
+    <line x1="661" y1="62" x2="661" y2="356"/>
+  </g>
+
+  <!-- caffeinate -->
+  <g transform="translate(0 76)">
+    <text x="36" y="20" class="mono name">caffeinate</text>
+    <text x="36" y="40" class="sans sub">what Claude Code runs</text>
+    <rect x="270" y="2" width="188" height="28" rx="4" fill="#d2704f"/>
+    <rect x="460" y="2" width="440" height="28" rx="4" fill="#5f80d8"/>
+    <text x="284" y="21" class="sans seg">awake</text>
+    <text x="474" y="21" class="sans seg">asleep: Claude stops mid-task</text>
+    <text x="270" y="56" class="sans note">✗  Close the lid and the Mac sleeps. The work waits for you.</text>
+  </g>
+
+  <!-- Amphetamine -->
+  <g transform="translate(0 168)">
+    <text x="36" y="20" class="sans name">Amphetamine</text>
+    <text x="36" y="40" class="sans sub">closed-display mode</text>
+    <path d="M274 2 H904 L924 16 L904 30 H274 A4 4 0 0 1 270 26 V6 A4 4 0 0 1 274 2 Z" fill="#d2704f"/>
+    <text x="284" y="21" class="sans seg">awake</text>
+    <text x="676" y="21" class="sans seg">still awake, until you turn it off</text>
+    <text x="270" y="56" class="sans note">✗  Survives the lid, then stays up long after Claude is done.</text>
+  </g>
+
+  <!-- claude-coffee -->
+  <g transform="translate(0 260)">
+    <text x="36" y="20" class="mono name">claude-coffee</text>
+    <text x="36" y="40" class="sans sub">this project</text>
+    <rect x="270" y="2" width="390" height="28" rx="4" fill="#d2704f"/>
+    <rect x="662" y="2" width="238" height="28" rx="4" fill="#5f80d8"/>
+    <text x="284" y="21" class="sans seg">awake, lid closed or not</text>
+    <text x="676" y="21" class="sans seg">asleep</text>
+    <text x="270" y="56" class="sans note">✓  Survives the lid, and sleeps a second after Claude is done.</text>
+  </g>
+
+  <!-- legend -->
+  <g class="sans" font-size="13" fill="#a8917f">
+    <rect x="36" y="364" width="14" height="14" rx="3" fill="#d2704f"/>
+    <text x="57" y="376">Mac awake</text>
+    <rect x="142" y="364" width="14" height="14" rx="3" fill="#5f80d8"/>
+    <text x="163" y="376">Mac asleep</text>
+    <text x="900" y="376" text-anchor="end">time →</text>
+  </g>
+</svg>

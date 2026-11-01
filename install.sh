@@ -12,7 +12,7 @@ step() { printf '  \033[32m✓\033[0m %-14s %s\n' "$1" "$2"; }
 warn() { printf '  \033[33m!\033[0m %-14s %s\n' "$1" "$2"; }
 die()  { printf '  \033[31m✗\033[0m %s\n' "$1" >&2; exit 1; }
 
-printf '\n☕ claude-coffee\n\n'
+printf '\nclaude-coffee: installing\n\n'
 [ "$(uname)" = Darwin ] || die "macOS only: this uses pmset and launchd"
 command -v jq >/dev/null || die "jq is missing: brew install jq"
 

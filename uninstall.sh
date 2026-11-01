@@ -6,7 +6,7 @@ SETTINGS=~/.claude/settings.json
 SUDOERS=/etc/sudoers.d/claude-coffee
 step() { printf '  \033[32m✓\033[0m %-14s %s\n' "$1" "$2"; }
 
-printf '\n☕ claude-coffee: uninstalling\n\n'
+printf '\nclaude-coffee: uninstalling\n\n'
 
 # 1. Launch agent first, so it can't switch sleep off again halfway through
 launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
@@ -36,4 +36,4 @@ fi
 # 4. Script and state
 rm -rf ~/.claude/hooks/claude-coffee.sh ~/.claude/coffee
 step files removed
-printf '\n  Bye! ☕\n\n'
+printf '\n  Done. Sleep is back to normal.\n\n'

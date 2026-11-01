@@ -67,7 +67,7 @@ if [ "$1" = status ]; then
     *) r='on (SSH login)' ;;
   esac
   [ "$REMOTE" = 1 ] || r='disabled in config'
-  printf '☕ claude-coffee\n'
+  printf 'claude-coffee\n'
   printf '  sleep          %s\n' "$s"
   printf '  busy sessions  %s\n' "$busy"
   printf '  remote mode    %s\n' "$r"
