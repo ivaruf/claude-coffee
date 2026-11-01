@@ -3,8 +3,8 @@
 # Your real sleep settings are never touched, so this is safe to run at any time.
 set -eu
 S=$(cd "$(dirname "$0")/.." && pwd)/claude-coffee.sh
-T=$(mktemp -d); n=0
-trap 'rc=$?; rm -rf "$T"; [ $rc = 0 ] || echo "hook: check $((n + 1)) failed" >&2' EXIT
+T=$(mktemp -d); n=0; rc=0
+trap 'rc=$?; rm -rf "$T"; [ "$rc" = 0 ] || echo "hook: check $((n + 1)) failed" >&2' EXIT
 mkdir "$T/bin"; echo 0 >"$T/state"
 cat >"$T/bin/pmset" <<EOF
 #!/bin/sh
@@ -39,6 +39,11 @@ cat >"$T/bin/launchctl" <<'EOF'
 #!/bin/sh
 exit 0
 EOF
+cat >"$T/bin/sleep" <<EOF
+#!/bin/sh
+[ -f $T/during-sleep ] && sh $T/during-sleep
+exit 0
+EOF
 chmod +x "$T/bin/"*
 
 hook() { printf '{"session_id":"%s"%s}' "$2" "${3:-}" | HOME=$T PATH="$T/bin:$PATH" sh "$S" "$1"; cat "$T/state"; }
@@ -62,6 +67,13 @@ echo Yes >"$T/lid"
 [ ! -e "$T/slept" ]; t              # lid closed mid-turn: stays awake
 [ "$(hook off F)" = 0 ]
 [ -e "$T/slept" ]; t                # last turn ends with the lid closed: sleep now
+rm "$T/slept"; hook on F >/dev/null
+echo "touch $T/.claude/coffee/busy/F2" >"$T/during-sleep"
+[ "$(hook off F)" = 0 ]; [ ! -e "$T/slept" ]; t     # a turn starts during the 1 s wait: no sleepnow
+rm "$T/.claude/coffee/busy/F2"; hook on F >/dev/null
+echo "echo 1 >$T/state" >"$T/during-sleep"
+hook off F >/dev/null; [ ! -e "$T/slept" ]; t       # another hook disables sleep during the wait: no sleepnow
+rm "$T/during-sleep"; echo 0 >"$T/state"
 echo No >"$T/lid"
 echo 4242 >"$T/ssh"                 # remote mode: logged in over SSH
 [ "$(hook on G)" = 1 ]

@@ -200,7 +200,7 @@ log show --last 1h --style compact --predicate 'process == "kernel" AND eventMes
 ./uninstall.sh
 ```
 
-It works in an order that never leaves sleep switched off: launch agent first, then the hooks, then sleep back to normal, then the sudoers rule, then the files. Your `settings.json` backup is left in place.
+It works in an order that never leaves sleep switched off. First it removes everything that could switch sleep off (the launch agent, the hooks, the script). Then it switches sleep back on and checks that it took. Then it removes the sudoers rule and the state. If a step fails, it carries on with the rest and tells you what is left. Your `settings.json` backup stays in place.
 
 ## FAQ
 

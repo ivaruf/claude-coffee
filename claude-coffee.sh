@@ -58,6 +58,7 @@ lid=$(ioreg -r -k AppleClamshellState -d 1 | grep -cE '"AppleClamshell(State|Cau
 if [ "$1" = status ]; then
   ok() { if "$@" >/dev/null 2>&1; then echo ok; else echo "missing (run install.sh)"; fi; }
   # -k: with cached credentials "sudo -n" passes for any admin; only a NOPASSWD rule should count
+  # shellcheck disable=SC2317  # called through ok()
   nopasswd() { sudo -k -n -l | grep -qE 'NOPASSWD: (ALL$|.*/usr/bin/pmset -a disablesleep 1)'; }
   s=allowed; [ "$have" = 1 ] && s=blocked
   [ "$want" = "${have:-0}" ] || s="$s (the next hook or check flips it)"
@@ -83,6 +84,8 @@ fi
 # re-enabling sleep leaves the Mac awake, so sleep now. Skipped when an external display keeps a
 # closed Mac running (AppleClamshellCausesSleep = No).
 if [ "$want" = 0 ] && [ "$have" = 1 ] && [ "$lid" = 2 ]; then
-  sleep 1; pmset sleepnow >/dev/null 2>&1
+  sleep 1
+  # A turn may have started during that second (a marker, or another hook's disablesleep 1): stay up
+  if [ -z "$(ls "$D")" ] && ! pmset -g | grep -q SleepDisabled; then pmset sleepnow >/dev/null 2>&1; fi
 fi
 exit 0

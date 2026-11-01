@@ -1,14 +1,20 @@
 #!/bin/sh
-# Runs install.sh and uninstall.sh in a throwaway $HOME with fake sudo and launchctl.
+# Runs install.sh and uninstall.sh in a throwaway $HOME with fake sudo, launchctl and pmset.
 # Your real settings, sudoers and launch agents are never touched.
 set -eu
 R=$(cd "$(dirname "$0")/.." && pwd)
-T=$(mktemp -d); n=0
-trap 'rc=$?; rm -rf "$T"; [ $rc = 0 ] || echo "install: check $((n + 1)) failed" >&2' EXIT
+T=$(mktemp -d); n=0; rc=0
+trap 'rc=$?; rm -rf "$T"; [ "$rc" = 0 ] || echo "install: check $((n + 1)) failed" >&2' EXIT
 mkdir -p "$T/bin" "$T/.claude"
 cat >"$T/bin/sudo" <<EOF
 #!/bin/sh
 echo "sudo \$*" >>$T/log
+if [ "\$2" = /usr/bin/pmset ]; then [ -e $T/nosudo ] && exit 1; echo "\$5" >$T/state; fi
+exit 0
+EOF
+cat >"$T/bin/pmset" <<EOF
+#!/bin/sh
+[ "\$1" = -g ] && [ "\$(cat $T/state)" = 1 ] && printf ' SleepDisabled\t\t1\n'
 exit 0
 EOF
 cat >"$T/bin/launchctl" <<EOF
@@ -21,7 +27,7 @@ case \$1 in
 esac
 EOF
 chmod +x "$T/bin/"*
-: >"$T/log"
+: >"$T/log"; echo 0 >"$T/state"
 S=$T/.claude/settings.json
 P=$T/Library/LaunchAgents/com.github.ivaruf.claude-coffee.plist
 run() { HOME=$T PATH="$T/bin:$PATH" sh "$R/$1" >/dev/null 2>&1; }
@@ -52,7 +58,7 @@ run install.sh
 run uninstall.sh
 [ "$(ours)" = 0 ]; t
 [ "$(jq -c '.hooks | keys' "$S")" = '["Stop"]' ]; t                   # emptied events dropped, others kept
-[ ! -e "$P" ] && [ ! -e "$T/.claude/hooks/claude-coffee.sh" ] && [ ! -e "$T/.claude/coffee" ]; t
+[ ! -e "$P" ]; [ ! -e "$T/.claude/hooks/claude-coffee.sh" ]; [ ! -e "$T/.claude/coffee" ]; t
 grep -q '^launchctl bootout ' "$T/log"; t
 grep -q '^sudo -n /usr/bin/pmset -a disablesleep 0$' "$T/log"; t     # sleep back on before the rule goes
 
@@ -64,4 +70,12 @@ run uninstall.sh
 echo '{ broken' >"$S"
 if run install.sh; then exit 1; fi; t                                 # invalid JSON: refuses ...
 [ "$(cat "$S")" = '{ broken' ]; t                                     # ... and leaves the file alone
+echo 1 >"$T/state"
+if run uninstall.sh; then exit 1; fi; t                               # uninstall reports the broken file ...
+[ "$(cat "$T/state")" = 0 ]; [ ! -e "$T/.claude/hooks/claude-coffee.sh" ]; t     # ... but still restores sleep
+[ "$(cat "$S")" = '{ broken' ]; t
+
+echo '{}' >"$S"; run install.sh; echo 1 >"$T/state"; touch "$T/nosudo"
+if out=$(HOME=$T PATH="$T/bin:$PATH" sh "$R/uninstall.sh" 2>&1); then exit 1; fi; t  # restoring sleep fails ...
+printf '%s\n' "$out" | grep -q 'run: sudo pmset -a disablesleep 0'; t   # ... and it says how to fix it
 echo "install: all $n checks passed"
