@@ -187,7 +187,314 @@ Linux)
   agent_loaded() { systemctl --user is-active --quiet claude-coffee.timer; }
   ;;
 MINGW*|MSYS*|CYGWIN*)   # Windows, in Git Bash
-  exit 0   # Windows backend: to do
+  MACHINE=PC OWN_KEEPAWAKE= HOLD_LABEL='power plan' AGENT_LABEL='scheduled task'
+  # Keeping awake is a change to the active power plan: closing the lid does nothing and the PC never
+  # sleeps by itself, plugged in and on battery. That's what holds with the lid closed (power requests
+  # and SetThreadExecutionState don't), and Windows lets you change your own plan without admin. hold 1
+  # first saves the values it changes in $WH, which is also all held looks at; hold 0 puts back each one
+  # that's still 0, so a change you made in between stays. PowerShell takes 0.3-1 s to start, so hooks
+  # never run it except at a change: the every-minute check runs it once and leaves what it found in $WC
+  # (lid, power, heat, SSH logins, processes) for the hooks.
+  WH=$C/win.held WC=$C/win.cache win_mode=$1
+  WIN_SUB_BUTTONS=4f971e89-eebd-4455-a8de-9e59040e7347 WIN_LIDACTION=5ca83367-6e45-459f-a27b-476b1d01c936
+  WIN_SUB_SLEEP=238c9fa8-0aad-41ed-83f4-97be242c8f20 WIN_STANDBYIDLE=29f6c1db-86da-48c5-9fdb-f2b67b1f44da
+  # Git Bash turns an argument starting with / into a path (/query: C:/Program Files/Git/query). powercfg
+  # takes dashes; schtasks and tasklist get these
+  win_noconv() { MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' "$@"; }
+  win_scheme() {   # the active power plan's GUID
+    powercfg -getactivescheme </dev/null 2>/dev/null | grep -oE '[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}' | head -n 1
+  }
+  # win_get SCHEME SUBGROUP SETTING prints its AC and DC values, in decimal. powercfg's text is localized
+  # and ends in CRLF, but the last two hex numbers of a query are always those two
+  win_get() {
+    powercfg -query "$1" "$2" "$3" </dev/null 2>/dev/null | tr -d '\r' | grep -oE '0x[0-9a-fA-F]+' | tail -n 2 |
+      { read -r w_ac && read -r w_dc && echo "$((w_ac)) $((w_dc))"; }
+  }
+  win_set() {   # win_set SCHEME SUBGROUP SETTING AC DC
+    powercfg -setacvalueindex "$1" "$2" "$3" "$4" </dev/null >/dev/null 2>&1
+    powercfg -setdcvalueindex "$1" "$2" "$3" "$5" </dev/null >/dev/null 2>&1
+  }
+  win_hold() {   # the file first: if this is cut short, hold 0 still knows what to put back
+    w_s=$(win_scheme); [ -n "$w_s" ] || return
+    w_n=0
+    { echo "$w_s"
+      if w_v=$(win_get "$w_s" "$WIN_SUB_BUTTONS" "$WIN_LIDACTION"); then echo "$WIN_SUB_BUTTONS $WIN_LIDACTION $w_v"; w_n=1; fi
+      if w_v=$(win_get "$w_s" "$WIN_SUB_SLEEP" "$WIN_STANDBYIDLE"); then echo "$WIN_SUB_SLEEP $WIN_STANDBYIDLE $w_v"; w_n=1; fi
+    } >"$WH.$$"
+    if [ "$w_n" = 0 ] || ! mv -f "$WH.$$" "$WH"; then rm -f "$WH.$$"; return; fi
+    win_set "$w_s" "$WIN_SUB_BUTTONS" "$WIN_LIDACTION" 0 0      # lid: do nothing
+    win_set "$w_s" "$WIN_SUB_SLEEP" "$WIN_STANDBYIDLE" 0 0      # sleep after: never
+    powercfg -setactive "$w_s" </dev/null >/dev/null 2>&1      # changes to the active plan count from here
+  }
+  win_release() {
+    { read -r w_s
+      while read -r w_sub w_key w_ac w_dc; do
+        w_now=$(win_get "$w_s" "$w_sub" "$w_key")
+        case ${w_now:-0 0} in "0 "*) ;; *) w_ac=${w_now%% *} ;; esac
+        case ${w_now:-0 0} in *" 0") ;; *) w_dc=${w_now#* } ;; esac
+        win_set "$w_s" "$w_sub" "$w_key" "$w_ac" "$w_dc"
+      done
+    } <"$WH"
+    # Not if you've switched plans meanwhile: that would switch you back
+    [ "$(win_scheme)" != "$w_s" ] || powercfg -setactive "$w_s" </dev/null >/dev/null 2>&1
+    rm -f "$WH"
+  }
+  # Your own lid close action (0 = do nothing), for the power source the check last saw: saved in $WH
+  # while we hold, else the plan's
+  win_action() {
+    w_v=
+    if [ -e "$WH" ]; then
+      while read -r w_sub w_key w_ac w_dc; do [ "$w_key" != "$WIN_LIDACTION" ] || w_v="$w_ac $w_dc"; done <"$WH"
+    else
+      w_v=$(win_get "$(win_scheme)" "$WIN_SUB_BUTTONS" "$WIN_LIDACTION")
+    fi
+    if [ "$win_onbatt" = 1 ]; then echo "${w_v#* }"; else echo "${w_v%% *}"; fi
+  }
+  win_lidcode() {   # closed, open or none, as lid_state's 2, 1 or 0
+    if [ "$1" != closed ]; then echo 0; elif [ "$(win_action)" = 0 ]; then echo 1; else echo 2; fi
+  }
+  # One hold at a time: two hooks saving at once would save each other's zeros, and then nothing would
+  # ever put the real values back. A lock older than a minute was left by a hook that got killed
+  win_lock() {
+    w_i=0
+    until mkdir "$C/win.lock" 2>/dev/null; do
+      w_i=$((w_i + 1)); [ "$w_i" -le 50 ] || return 1
+      if [ -n "$(find "$C/win.lock" -prune -mmin +1 2>/dev/null)" ]; then rmdir "$C/win.lock" 2>/dev/null; else sleep 0.2; fi
+    done
+  }
+  held() { if [ -e "$WH" ]; then echo 1; else echo 0; fi; }
+  hold() {
+    win_lock || return 0
+    w_released=0
+    if [ "$1" = 1 ]; then
+      [ -e "$WH" ] || win_hold
+    elif [ -e "$WH" ]; then
+      w_act=$(win_action); win_release; w_released=1
+    fi
+    rmdir "$C/win.lock" 2>/dev/null
+    # Next, the shared logic sleeps the PC if $lid says closed (2). In a hook that reading is the check's,
+    # up to a minute old: a lid closed since then would go unnoticed, and Windows doesn't look at a closed
+    # lid again when its lid action goes back to sleep. So ask now, after the release, which leaves no gap:
+    # a lid that closes from here on sleeps the PC by itself
+    if [ "$w_released" = 1 ] && [ "$win_mode" != check ] && [ "$win_lid" != none ]; then
+      case $(win_ps lid) in
+        closed) if [ "$w_act" = 0 ]; then lid=1; else lid=2; fi ;;
+        open|none) lid=0 ;;
+      esac
+    fi
+  }
+  lid_state() { win_lidcode "$win_lid"; }
+  lid_closed() { [ "$win_lid" = closed ]; }
+  sleep_now() { win_ps sleep >/dev/null 2>&1; }
+  heat() { thermal=$win_thermal battery=$win_battery; }
+  power() { onbatt=$win_onbatt charge=$win_charge; }
+  notify() { win_ps notify "$1" >/dev/null 2>&1; }
+  procs() { sed -n 's/^proc //p' "$WC" 2>/dev/null; }
+  ssh_logins() { [ -n "$win_ssh" ] || return 1; for w_l in $win_ssh; do echo "${w_l%%:*}"; done; }
+  login_ages() { for w_l in $win_ssh; do for w_p in $1; do [ "$w_p" != "${w_l%%:*}" ] || echo "${w_l#*:}"; done; done; }
+  # Without a password, but Group Policy or MDM can fix the lid action or the sleep timeout, and then ours
+  # don't count
+  can_hold() {
+    for w_g in 5CA83367-6E45-459F-A27B-476B1D01C936 29F6C1DB-86DA-48C5-9FDB-F2B67B1F44DA; do
+      if reg query "HKLM\\SOFTWARE\\Policies\\Microsoft\\Power\\PowerSettings\\$w_g" >/dev/null 2>&1; then return 1; fi
+    done
+    [ -n "$(win_scheme)" ]
+  }
+  agent_loaded() { win_noconv schtasks /query /tn claude-coffee >/dev/null 2>&1; }
+
+  # The PowerShell half lives in this file too (the one file the installer downloads). It's written out
+  # when it differs and run with -File, a script PowerShell can be asked to run with -ExecutionPolicy Bypass
+  win_ps() {
+    w_f=$C/claude-coffee.ps1
+    win_ps1 >"$w_f.$$"
+    if cmp -s "$w_f.$$" "$w_f"; then rm -f "$w_f.$$"; else mv -f "$w_f.$$" "$w_f" || rm -f "$w_f.$$"; fi
+    set -- -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$(cygpath -w "$w_f")" "$@"
+    # A hung WMI query mustn't hold up a hook. Git Bash's own timeout, by path: Windows has another
+    if [ -x /usr/bin/timeout ]; then win_noconv /usr/bin/timeout 60 powershell "$@"; else win_noconv powershell "$@"; fi \
+      </dev/null 2>/dev/null | tr -d '\r'
+  }
+  win_ps1() {
+    cat <<'PS1'
+# claude-coffee: the PowerShell half of claude-coffee.sh, which writes this file before it runs it (edits
+# here are overwritten). Arguments: gather full|ssh, lid, sleep, notify TEXT. ASCII only: Windows
+# PowerShell reads a file without a BOM in the ANSI code page.
+param([string]$Mode, [string]$Arg)
+$ErrorActionPreference = 'SilentlyContinue'
+$now = Get-Date
+
+function Native {   # what PowerShell can't reach by itself: the lid switch, sleep states, the display
+  Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Threading;
+public static class ClaudeCoffee {
+  delegate uint Callback(IntPtr context, uint type, IntPtr setting);
+  [DllImport("powrprof.dll")] static extern uint PowerSettingRegisterNotification(ref Guid setting, uint flags, IntPtr recipient, out IntPtr handle);
+  [DllImport("powrprof.dll")] static extern uint PowerSettingUnregisterNotification(IntPtr handle);
+  [DllImport("powrprof.dll")] [return: MarshalAs(UnmanagedType.U1)] static extern bool GetPwrCapabilities(IntPtr capabilities);
+  [DllImport("user32.dll")] static extern bool PostMessage(IntPtr window, uint message, IntPtr wparam, IntPtr lparam);
+  static volatile int lid = -1;
+  static readonly ManualResetEvent answered = new ManualResetEvent(false);
+  static readonly Callback onLid = OnLid;
+  // Windows calls this right after registering, with the current state: a POWERBROADCAST_SETTING whose
+  // data, at offset 20, is 0 for closed and 1 for open
+  static uint OnLid(IntPtr context, uint type, IntPtr setting) {
+    if (type == 0x8013 && setting != IntPtr.Zero) { lid = Marshal.ReadInt32(setting, 20); answered.Set(); }
+    return 0;
+  }
+  static bool Capability(int offset) {   // a BOOLEAN of SYSTEM_POWER_CAPABILITIES: 2 LidPresent, 5 SystemS3
+    IntPtr p = Marshal.AllocHGlobal(256);
+    try {
+      for (int i = 0; i < 256; i++) Marshal.WriteByte(p, i, 0);
+      return GetPwrCapabilities(p) && Marshal.ReadByte(p, offset) != 0;
+    } finally { Marshal.FreeHGlobal(p); }
+  }
+  public static string Lid() {
+    if (!Capability(2)) return "none";
+    Guid lidSwitch = new Guid("ba3e0f4d-b817-4094-a2d1-d56379e6a0f3");   // GUID_LIDSWITCH_STATE_CHANGE
+    IntPtr p = Marshal.AllocHGlobal(2 * IntPtr.Size), handle;
+    try {
+      Marshal.WriteIntPtr(p, 0, Marshal.GetFunctionPointerForDelegate(onLid));   // DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS
+      Marshal.WriteIntPtr(p, IntPtr.Size, IntPtr.Zero);
+      if (PowerSettingRegisterNotification(ref lidSwitch, 2, p, out handle) != 0) return "none";   // DEVICE_NOTIFY_CALLBACK
+      answered.WaitOne(1000);
+      PowerSettingUnregisterNotification(handle);
+    } finally { Marshal.FreeHGlobal(p); }
+    return lid == 0 ? "closed" : lid == 1 ? "open" : "none";
+  }
+  public static bool CanSuspend() { return Capability(5); }   // S3; Modern Standby PCs have none
+  // HWND_BROADCAST, WM_SYSCOMMAND, SC_MONITORPOWER, off
+  public static void DisplayOff() { PostMessage(new IntPtr(0xffff), 0x0112, new IntPtr(0xf170), new IntPtr(2)); }
+}
+'@
+}
+
+function Etime($Since) {   # [[dd-]hh:]mm:ss, as ps prints it
+  $s = [long][math]::Floor(($now - $Since).TotalSeconds); if ($s -lt 0) { $s = 0 }
+  $d = [math]::Floor($s / 86400); $h = [math]::Floor($s % 86400 / 3600); $m = [math]::Floor($s % 3600 / 60)
+  if ($d -gt 0) { '{0}-{1:00}:{2:00}:{3:00}' -f $d, $h, $m, ($s % 60) }
+  elseif ($h -gt 0) { '{0:00}:{1:00}:{2:00}' -f $h, $m, ($s % 60) }
+  else { '{0:00}:{1:00}' -f $m, ($s % 60) }
+}
+
+# One "key value" line each: lid closed|open|none, onbatt 1|0, charge %, thermal 0|2, battery C,
+# ssh PID ETIME per login, then proc PID PPID ETIME %CPU NAME COMMANDLINE per process
+function Gather($What) {
+  if ($What -eq 'ssh') {
+    $all = @(Get-CimInstance Win32_Process -Filter "Name = 'sshd.exe' OR Name = 'sshd-session.exe'")
+  } else {
+    Native
+    'lid ' + [ClaudeCoffee]::Lid()
+    Add-Type -AssemblyName System.Windows.Forms
+    $power = [System.Windows.Forms.SystemInformation]::PowerStatus
+    'onbatt ' + [int]($power.PowerLineStatus -eq 'Offline')
+    if (-not ([int]$power.BatteryChargeStatus -band 128) -and $power.BatteryLifePercent -le 1) {   # 128: no battery
+      'charge ' + [int]($power.BatteryLifePercent * 100)
+    }
+    # Thermal zones, readable without admin: a passive limit under 100% means throttled, and throttle
+    # reason 1 means for heat (2 is for electrical current)
+    $zones = @(Get-CimInstance Win32_PerfFormattedData_Counters_ThermalZoneInformation)
+    if ($zones.Count) {
+      $hot = @($zones | Where-Object { ($_.ThrottleReasons -band 1) -or
+        ($null -ne $_.PercentPassiveLimit -and $_.PercentPassiveLimit -lt 100 -and -not ($_.ThrottleReasons -band 2)) })
+      'thermal ' + $(if ($hot.Count) { 2 } else { 0 })
+    }
+    $battery = @(Get-CimInstance -Namespace root/wmi -ClassName BatteryTemperature)   # few batteries tell; 0.1 K
+    if ($battery.Count -and $battery[0].Temperature -gt 0) { 'battery ' + [int]($battery[0].Temperature / 10 - 273.15) }
+    $all = @(Get-CimInstance Win32_Process)
+  }
+  # Windows OpenSSH runs each login in an sshd (or, since 9.8, sshd-session) process of the user's own
+  foreach ($p in $all) {
+    if ($p.Name -notin @('sshd.exe', 'sshd-session.exe') -or -not $p.CreationDate) { continue }
+    $owner = Invoke-CimMethod -InputObject $p -MethodName GetOwner
+    if ($owner.User -eq $env:USERNAME) { 'ssh {0} {1}' -f $p.ProcessId, (Etime $p.CreationDate) }
+  }
+  if ($What -eq 'ssh') { return }
+  # Recent CPU: CPU time since the last sample (the previous check's, about a minute ago) over the time
+  # in between, 100 being one core. A process that's newer than that, or with no sample to go by: its
+  # lifetime average
+  $file = Join-Path $PSScriptRoot 'win.cpu'
+  $before = @{}; $then = 0L
+  foreach ($line in @(Get-Content -LiteralPath $file)) {
+    $f = $line.Split(' ')
+    if ($f.Count -eq 1) { $then = [long]$f[0] } elseif ($f.Count -eq 2) { $before[$f[0]] = [long]$f[1] }
+  }
+  $ticks = [DateTime]::UtcNow.Ticks; $wall = $ticks - $then
+  $recent = $then -gt 0 -and $wall -gt 0 -and $wall -lt 3000000000   # 5 minutes, in 100 ns
+  $started = @{}
+  foreach ($p in $all) { if ($p.CreationDate) { $started[[int]$p.ProcessId] = $p.CreationDate } }
+  $sample = New-Object System.Collections.Generic.List[string]
+  $sample.Add([string]$ticks)
+  $invariant = [Globalization.CultureInfo]::InvariantCulture
+  foreach ($p in $all) {
+    if (-not $p.CreationDate) { continue }   # System Idle Process, System
+    $key = '{0}@{1}' -f $p.ProcessId, $p.CreationDate.Ticks
+    $cpu = [long]$p.KernelModeTime + [long]$p.UserModeTime
+    $sample.Add("$key $cpu")
+    if ($recent -and $before.ContainsKey($key)) { $pct = 100.0 * ($cpu - $before[$key]) / $wall }
+    else { $age = ($now - $p.CreationDate).Ticks; $pct = if ($age -gt 0) { 100.0 * $cpu / $age } else { 0.0 } }
+    # A parent that started after its child is a recycled process ID, not the parent
+    $parent = [int]$p.ParentProcessId
+    if (-not $started.ContainsKey($parent) -or $started[$parent] -gt $p.CreationDate) { $parent = 0 }
+    $command = ([string]$p.CommandLine).Replace('\', '/') -replace '\s+', ' '
+    'proc {0} {1} {2} {3} {4} {5}' -f $p.ProcessId, $parent, (Etime $p.CreationDate), ([double]$pct).ToString('0.0', $invariant), $p.Name, $command
+  }
+  [IO.File]::WriteAllLines($file, $sample)
+}
+
+function SleepNow {
+  Native
+  Add-Type -AssemblyName System.Windows.Forms
+  # With S3, Suspend is sleep (rundll32 powrprof.dll,SetSuspendState would hibernate). Modern Standby PCs
+  # have no S3 and refuse it: for them, the display going off is what starts standby
+  if (-not ([ClaudeCoffee]::CanSuspend() -and [System.Windows.Forms.Application]::SetSuspendState('Suspend', $false, $false))) {
+    [ClaudeCoffee]::DisplayOff()
+  }
+}
+
+function Notify($Message) {   # a toast, shown as from Windows PowerShell, whose app ID every Windows has
+  $null = [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
+  $xml = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)
+  $lines = $xml.GetElementsByTagName('text')
+  $null = $lines.Item(0).AppendChild($xml.CreateTextNode('claude-coffee'))
+  $null = $lines.Item(1).AppendChild($xml.CreateTextNode($Message))
+  $app = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe'
+  [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($app).Show([Windows.UI.Notifications.ToastNotification]::new($xml))
+}
+
+switch ($Mode) {
+  'gather' { Gather $Arg }
+  'lid' { Native; [ClaudeCoffee]::Lid() }
+  'sleep' { SleepNow }
+  'notify' { Notify $Arg }
+}
+PS1
+  }
+
+  # The check asks Windows (one PowerShell run) when there's something to watch: a session at work, our
+  # hold, a tripped guard. Idle, it only looks for SSH logins, for remote mode, and only starts PowerShell
+  # if tasklist (much quicker) shows an sshd at all. status always asks
+  win_gather() {
+    if [ "$1" = ssh ] && ! win_noconv tasklist /fo csv /nh 2>/dev/null | grep -qi '^"sshd'; then : >"$WC"; return; fi
+    win_ps gather "$1" >"$WC.$$"; mv -f "$WC.$$" "$WC" || rm -f "$WC.$$"
+  }
+  case $1 in
+    status) win_gather full ;;
+    check)
+      if [ -e "$WH" ] || [ -e "$H" ] || [ -e "$B" ] || [ -n "$(ls "$D")" ]; then win_gather full
+      elif [ "$REMOTE" = 1 ]; then win_gather ssh; fi ;;
+  esac
+  # What the check found, if it's from the last few minutes; anything else is unknown
+  win_lid= win_onbatt=0 win_charge= win_thermal= win_battery= win_ssh=
+  if [ -n "$(find "$WC" -mmin -3 2>/dev/null)" ]; then
+    while read -r w_k w_a w_b; do
+      case $w_k in
+        lid) win_lid=$w_a ;; onbatt) win_onbatt=$w_a ;; charge) win_charge=$w_a ;;
+        thermal) win_thermal=$w_a ;; battery) win_battery=$w_a ;; ssh) win_ssh="$win_ssh $w_a:$w_b" ;;
+        proc) break ;;
+      esac
+    done <"$WC"
+  fi
   ;;
 *) exit 0 ;;   # not supported: stay out of the way
 esac

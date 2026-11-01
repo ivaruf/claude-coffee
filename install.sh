@@ -142,9 +142,68 @@ write_unit() {   # FILE, contents on stdin: written, and changed=1, only if new 
   if cmp -s "$t" "$1"; then rm -f "$t"; else cat "$t" >"$1"; rm -f "$t"; changed=1; fi
 }
 
-# --- Windows, in Git Bash ---------------------------------------------------------------------------------
-windows_prepare() { die "Windows support is on its way"; }
-windows_install() { :; }
+# --- Windows, in Git Bash: no grant needed (you may change your own power plan), and a scheduled task ------
+TASK=claude-coffee
+# Claude Code reads %USERPROFILE%\.claude\settings.json (or CLAUDE_CONFIG_DIR's), which needn't be Git Bash's ~
+windows_settings() {
+  if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then SETTINGS=$(cygpath -u "$CLAUDE_CONFIG_DIR")/settings.json
+  elif [ -n "${USERPROFILE:-}" ]; then SETTINGS=$(cygpath -u "$USERPROFILE")/.claude/settings.json; fi
+}
+# A path that bash and PowerShell both read as just a path, unquoted
+windows_plain() { case $1 in *[!A-Za-z0-9/:._~+-]*) return 1 ;; esac; }
+windows_prepare() {
+  for c in cygpath powercfg powershell schtasks; do
+    command -v "$c" >/dev/null || die "$c is missing: run this in Git Bash, on Windows"
+  done
+  windows_settings
+  # Git's own bin\bash.exe sets up PATH and HOME the same way wherever it starts, so the hooks, the
+  # scheduled check and your Git Bash share ~/.claude/coffee
+  WIN_BASH=$(cygpath -m /)/bin/bash.exe
+  [ -f "$WIN_BASH" ] || die "$WIN_BASH is missing: claude-coffee needs Git for Windows"
+  # The hook command runs that bash on the script, by absolute paths with forward slashes (Git Bash eats
+  # backslashes). Spaces become 8.3 short names (C:/PROGRA~1/Git), so no quotes are needed, and then the
+  # line means the same to PowerShell, where Claude Code runs hooks when it can't find Git Bash (a hook
+  # that fails there blocks every tool call)
+  mkdir -p "$(dirname "$HOOK")"
+  b=$(cygpath -m "$WIN_BASH"); windows_plain "$b" || b=$(cygpath -m -s "$WIN_BASH")
+  h=$(cygpath -m "$HOOK"); windows_plain "$h" || h=$(cygpath -m -s "$(dirname "$HOOK")")/claude-coffee.sh
+  if windows_plain "$b" && windows_plain "$h"; then
+    CMD="$b $h"
+  else
+    q() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
+    CMD="$(q "$(cygpath -m "$WIN_BASH")") $(q "$(cygpath -m "$HOOK")")"
+    warn hooks "no short name for a path with spaces: the hooks need Claude Code to find Git Bash"
+  fi
+}
+windows_install() {
+  # Group Policy (or MDM) can fix the lid action or the sleep timeout; then changes to the plan don't count
+  p="lid and sleep timer off only while Claude works; no password needed"
+  for g in 5CA83367-6E45-459F-A27B-476B1D01C936 29F6C1DB-86DA-48C5-9FDB-F2B67B1F44DA; do
+    if reg query "HKLM\\SOFTWARE\\Policies\\Microsoft\\Power\\PowerSettings\\$g" >/dev/null 2>&1; then p=; fi
+  done
+  if [ -n "$p" ]; then step "power plan" "$p"
+  else warn "power plan" "set by your organization (Group Policy): the PC just sleeps as usual"; fi
+
+  # Checks every minute, so markers from interrupted turns expire on time and the guards notice a long job.
+  # As you, only while you're logged on, on battery too; conhost --headless keeps a console from flashing up
+  d=$(mktemp -d)
+  cat >"$d/task.ps1" <<'EOF'
+param([string]$Bash, [string]$Script)
+$ErrorActionPreference = 'Stop'
+$action = New-ScheduledTaskAction -Execute 'conhost.exe' -Argument ('--headless "{0}" "{1}" check' -f $Bash, $Script)
+$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 1)
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `
+  -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
+$null = Register-ScheduledTask -TaskName 'claude-coffee' -Action $action -Trigger $trigger -Settings $settings -Force `
+  -Description 'claude-coffee: checks every minute (https://github.com/ivaruf/claude-coffee)'
+EOF
+  if MSYS_NO_PATHCONV=1 powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$(cygpath -w "$d/task.ps1")" \
+       "$(cygpath -w "$WIN_BASH")" "$(cygpath -m "$HOOK")" </dev/null >/dev/null 2>&1; then
+    rm -rf "$d"; step "scheduled task" "$TASK, every minute"
+  else
+    rm -rf "$d"; die "couldn't add the scheduled task $TASK. Re-run to retry"
+  fi
+}
 
 # Everything runs from here, called on the last line: a download cut off halfway runs nothing
 main() {

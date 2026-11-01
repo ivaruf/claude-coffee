@@ -67,10 +67,55 @@ linux_release() {   # stopping the unit releases logind's lock; with the lid clo
 linux_unprivilege() { :; }   # nothing was granted: no sudo rule, no polkit rule
 
 # --- Windows, in Git Bash ---------------------------------------------------------------------------------
-windows_prepare() { :; }
-windows_unschedule() { :; }
-windows_release() { :; }
-windows_unprivilege() { :; }
+TASK=claude-coffee
+windows_prepare() {   # Claude Code's settings.json: in %USERPROFILE%\.claude (or CLAUDE_CONFIG_DIR), not Git Bash's ~
+  if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then SETTINGS=$(cygpath -u "$CLAUDE_CONFIG_DIR")/settings.json
+  elif [ -n "${USERPROFILE:-}" ]; then SETTINGS=$(cygpath -u "$USERPROFILE")/.claude/settings.json; fi
+}
+windows_unschedule() {   # Git Bash would turn /query into a path
+  if ! MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' schtasks /query /tn "$TASK" >/dev/null 2>&1 ||
+     MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' schtasks /delete /tn "$TASK" /f >/dev/null 2>&1; then
+    step "scheduled task" removed
+  else
+    fail "scheduled task" "still there; run: schtasks /delete /tn $TASK /f"
+  fi
+}
+# A setting's AC and DC values in the plan, in decimal: the last two hex numbers of powercfg's (localized) text
+windows_get() {
+  powercfg -query "$1" "$2" "$3" </dev/null 2>/dev/null | tr -d '\r' | grep -oE '0x[0-9a-fA-F]+' | tail -n 2 |
+    { read -r v_ac && read -r v_dc && echo "$((v_ac)) $((v_dc))"; }
+}
+windows_scheme() {
+  powercfg -getactivescheme </dev/null 2>/dev/null | grep -oE '[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}' | head -n 1
+}
+# The hook saved the plan's values in win.held before it set them to 0. Put back each one that's still 0
+# (one you changed in between stays), then check that none of them is left at 0
+windows_release() {
+  f=~/.claude/coffee/win.held
+  [ -e "$f" ] || { step sleep "back to normal"; return; }
+  { read -r scheme
+    while read -r sub key ac dc; do
+      now=$(windows_get "$scheme" "$sub" "$key")
+      case ${now:-0 0} in "0 "*) powercfg -setacvalueindex "$scheme" "$sub" "$key" "$ac" </dev/null >/dev/null 2>&1 ;; esac
+      case ${now:-0 0} in *" 0") powercfg -setdcvalueindex "$scheme" "$sub" "$key" "$dc" </dev/null >/dev/null 2>&1 ;; esac
+    done
+  } <"$f"
+  # Changes to the active plan count once it's activated again; another plan you switched to stays
+  [ "$(windows_scheme)" != "$scheme" ] || powercfg -setactive "$scheme" </dev/null >/dev/null 2>&1
+  left=$(sed 1d "$f" | while read -r sub key ac dc; do
+    now=$(windows_get "$scheme" "$sub" "$key")
+    if [ -z "$now" ] || { [ "${now%% *}" = 0 ] && [ "$ac" != 0 ]; } || { [ "${now#* }" = 0 ] && [ "$dc" != 0 ]; }; then
+      echo "$key"
+    fi
+  done)
+  if [ -z "$left" ]; then
+    rm -f "$f"; step sleep "back to normal"
+  else   # the state folder goes next, so say what the values were
+    was=$(sed 1d "$f" | awk '{ printf "%s%s %s/%s", (NR > 1 ? ", " : ""), ($2 ~ /^5ca83367/ ? "lid action" : "sleep after (s)"), $3, $4 }')
+    fail sleep "still switched off; set it in Control Panel > Power Options (plugged in/on battery, it was: $was)"
+  fi
+}
+windows_unprivilege() { :; }   # nothing was granted
 
 # Everything runs from here, called on the last line: a download cut off halfway runs nothing
 main() {
