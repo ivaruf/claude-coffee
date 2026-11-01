@@ -33,22 +33,7 @@ Close the lid mid-task and macOS puts the Mac to sleep, freezing Claude's work. 
 curl -fsSL https://raw.githubusercontent.com/ivaruf/claude-coffee/main/install.sh | sh
 ```
 
-Or read it first: `git clone https://github.com/ivaruf/claude-coffee && cd claude-coffee && ./install.sh`. The installer may ask for your password once. Running sessions pick it up on their next turn, and running it again updates it.
-
-```console
-$ ~/.claude/hooks/claude-coffee.sh status
-claude-coffee
-  sleep          blocked
-  busy sessions  2
-  remote mode    off (no SSH login)
-  lid            closed
-  heat           battery 31 °C, thermal state nominal
-  heat guard     armed: lid closed and serious thermal state or battery 45 °C → sleep
-  power          on battery, 64%
-  battery guard  armed: on battery at 20% or less → sleep
-  sudo pmset     ok
-  launch agent   ok
-```
+Or read it first: `git clone https://github.com/ivaruf/claude-coffee && cd claude-coffee && ./install.sh`. The installer may ask for your password once. Running sessions pick it up on their next turn, and running it again updates it. To see what it's doing: `~/.claude/hooks/claude-coffee.sh status`.
 
 <details>
 <summary><b>What the installer changes</b></summary>
@@ -157,15 +142,32 @@ LOW_BATTERY=20     # on battery at this charge (%) or less, stop keeping the Mac
 
 ## Troubleshooting
 
-```sh
-~/.claude/hooks/claude-coffee.sh status                             # everything at a glance
-launchctl kickstart gui/$(id -u)/com.github.ivaruf.claude-coffee    # run the check now
+`~/.claude/hooks/claude-coffee.sh status` shows what claude-coffee sees right now:
 
-# Why did (or didn't) the Mac sleep? The kernel says:
-log show --last 1h --style compact --predicate 'process == "kernel" AND eventMessage CONTAINS "PMRD"' \
-  | grep -E 'prevented|sleep reason|Clamshell closed'
-# "prevented by kPMUserDisabledAllSleep" is claude-coffee; "by kPMCPUAssertion" is another app
+```console
+claude-coffee
+  sleep          blocked                    # kept awake right now ("allowed" otherwise)
+  busy sessions  2                          # Claude Code sessions that are mid-turn
+  remote mode    off (no SSH login)         # on while you're logged in over SSH
+  lid            closed
+  heat           battery 31 °C, thermal state nominal
+  heat guard     armed: …                   # "tripped", with when and why, after it stepped in
+  power          on battery, 64%
+  battery guard  armed: …                   # same
+  sudo pmset     ok                         # "missing": run the installer again
+  launch agent   ok                         # "missing": run the installer again
 ```
+
+- **The Mac slept while Claude was working?** Both last lines should say `ok`, and neither guard should say `tripped`.
+- **The Mac won't sleep?** `busy sessions` and `remote mode` show what's holding it. A session interrupted with Esc lets go within about 30 minutes.
+- **Still puzzled?** The kernel logs every sleep decision:
+
+  ```sh
+  log show --last 1h --style compact --predicate 'process == "kernel" AND eventMessage CONTAINS "PMRD"' \
+    | grep -E 'prevented|sleep reason|Clamshell closed'
+  ```
+
+  `System sleep prevented by kPMUserDisabledAllSleep` means claude-coffee kept the Mac awake, and `kPMCPUAssertion` means another app did.
 
 ## Known limits
 
