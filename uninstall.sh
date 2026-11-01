@@ -47,10 +47,24 @@ darwin_unprivilege() {
 }
 
 # --- Linux ------------------------------------------------------------------------------------------------
+UNITS=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user
 linux_prepare() { :; }
-linux_unschedule() { :; }
-linux_release() { :; }
-linux_unprivilege() { :; }
+linux_unschedule() {
+  systemctl --user --quiet disable --now claude-coffee.timer >/dev/null 2>&1
+  systemctl --user stop claude-coffee.service >/dev/null 2>&1   # a check in progress
+  rm -f "$UNITS/claude-coffee.timer" "$UNITS/claude-coffee.service"
+  systemctl --user daemon-reload >/dev/null 2>&1
+  step "systemd timer" removed
+}
+linux_release() {   # stopping the unit releases logind's lock; with the lid closed, logind sleeps then
+  systemctl --user stop claude-coffee-awake >/dev/null 2>&1
+  if systemctl --user is-active --quiet claude-coffee-awake 2>/dev/null; then
+    fail sleep "still kept awake; run: systemctl --user stop claude-coffee-awake"
+  else
+    step sleep "back to normal"
+  fi
+}
+linux_unprivilege() { :; }   # nothing was granted: no sudo rule, no polkit rule
 
 # --- Windows, in Git Bash ---------------------------------------------------------------------------------
 windows_prepare() { :; }

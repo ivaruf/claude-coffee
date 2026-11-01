@@ -79,9 +79,68 @@ EOF
   step "launch agent" "$AGENT"
 }
 
-# --- Linux ------------------------------------------------------------------------------------------------
-linux_prepare() { die "Linux support is on its way"; }
-linux_install() { :; }
+# --- Linux: a systemd timer, and nothing to grant: logind's lock needs no sudo -----------------------------
+UNITS=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user
+linux_prepare() {
+  for c in systemctl systemd-run systemd-inhibit busctl; do
+    command -v "$c" >/dev/null || die "$c is missing: on Linux, claude-coffee needs systemd"
+  done
+  systemctl --user show-environment >/dev/null 2>&1 ||
+    die "systemctl --user isn't answering: claude-coffee needs your systemd user manager (log in as yourself, not with su or sudo)"
+}
+linux_install() {
+  # polkit lets a local desktop session take the lid lock without a password; an SSH login alone it doesn't
+  if systemd-inhibit --what=sleep:idle:handle-lid-switch --mode=block --who=claude-coffee --why='install check' true </dev/null >/dev/null 2>&1
+  then step "logind lock" "allowed without a password"
+  else warn "logind lock" "polkit refused it here (an SSH login?): it needs a local desktop session"; fi
+
+  # Some desktops (KDE's PowerDevil, Xfce's power manager if set to) take the lid over from logind and
+  # decide on lid sleep themselves, whatever claude-coffee's lock says
+  who=$(busctl --json=short call org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager ListInhibitors 2>/dev/null |
+    jq -r '.data[0][] | select(.[3] == "block" and .[1] != "claude-coffee" and (.[0] | split(":") | index("handle-lid-switch"))) | .[1]' 2>/dev/null |
+    sort -u | paste -sd , -)
+  case ${XDG_CURRENT_DESKTOP:-} in *KDE*) [ -n "$who" ] || who=PowerDevil ;; esac
+  if [ -n "$who" ]; then warn lid "handled by $who, not logind: closing the lid follows its power settings"; fi
+
+  # Checks every minute, so markers from interrupted turns expire on time and the guards notice a long
+  # job (one long tool call fires no hooks)
+  mkdir -p "$UNITS"
+  changed=0
+  write_unit "$UNITS/claude-coffee.service" <<'EOF'
+# claude-coffee: checks for stale markers, long jobs, heat and the battery
+[Unit]
+Description=claude-coffee check
+
+[Service]
+Type=oneshot
+ExecStart=%h/.claude/hooks/claude-coffee.sh check
+EOF
+  write_unit "$UNITS/claude-coffee.timer" <<'EOF'
+# claude-coffee: runs the check every minute
+[Unit]
+Description=claude-coffee check, every minute
+
+[Timer]
+OnCalendar=minutely
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target
+EOF
+  # Unchanged units stay as they are; new or changed ones (an update) are reloaded and the timer restarted
+  if [ "$changed" = 1 ]; then
+    systemctl --user daemon-reload
+    systemctl --user --quiet enable claude-coffee.timer
+    systemctl --user restart claude-coffee.timer
+  else
+    systemctl --user --quiet enable --now claude-coffee.timer
+  fi
+  step "systemd timer" "$UNITS/claude-coffee.timer"
+}
+write_unit() {   # FILE, contents on stdin: written, and changed=1, only if new or different
+  t=$(mktemp); cat >"$t"
+  if cmp -s "$t" "$1"; then rm -f "$t"; else cat "$t" >"$1"; rm -f "$t"; changed=1; fi
+}
 
 # --- Windows, in Git Bash ---------------------------------------------------------------------------------
 windows_prepare() { die "Windows support is on its way"; }

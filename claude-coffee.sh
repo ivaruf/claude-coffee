@@ -75,8 +75,114 @@ Darwin)
   agent_loaded() { launchctl print "gui/$(id -u)/com.github.ivaruf.claude-coffee"; }
   ;;
 Linux)
-  grep -qi microsoft /proc/version 2>/dev/null && exit 0   # WSL: not supported yet
-  exit 0   # Linux backend: to do
+  ROOT=${CLAUDE_COFFEE_ROOT:-}   # empty: the real /sys and /proc. The tests point it at a fake tree
+  grep -qi microsoft "$ROOT/proc/version" 2>/dev/null && exit 0   # WSL: not supported yet
+  MACHINE=computer HOLD_LABEL='logind lock' AGENT_LABEL='systemd timer'
+  # Claude Code on Linux runs no keep-awake helper yet (2.1.316 has an unused linuxInhibitor field set to
+  # "systemd-inhibit"). Named anyway: should it start one per turn, as caffeinate on macOS, a long tool
+  # call counts as work. Our own lock's systemd-inhibit runs under the systemd user manager, not under
+  # Claude Code, so it never counts. Should it hold one all session, an interrupted turn's marker lasts
+  # MAX_QUIET_HOURS instead of STALE_MINUTES: bounded either way.
+  OWN_KEEPAWAKE=systemd-inhibit
+  # A logind inhibitor lock, held by a transient user unit because the hook exits at once. Lid close
+  # needs handle-lid-switch: a sleep lock alone doesn't stop it (LidSwitchIgnoreInhibited=yes). polkit
+  # grants that to a local desktop user without a password, but not to an SSH login alone
+  held() { if systemctl --user is-active --quiet claude-coffee-awake 2>/dev/null; then echo 1; else echo 0; fi; }
+  hold() {
+    if [ "$1" = 1 ]; then
+      systemd-run --user --quiet --collect --unit=claude-coffee-awake \
+        systemd-inhibit --what=sleep:idle:handle-lid-switch --mode=block --who=claude-coffee \
+        --why='Claude Code is working' sleep infinity </dev/null >/dev/null 2>&1
+    else
+      systemctl --user stop claude-coffee-awake >/dev/null 2>&1
+    fi
+  }
+  # logind's LidClosed and Docked (an external display or a dock), each printed as "b true" or "b false".
+  # Without logind on the bus, the ACPI lid
+  lid_state() {
+    if lx_l=$(busctl get-property org.freedesktop.login1 /org/freedesktop/login1 \
+      org.freedesktop.login1.Manager LidClosed Docked 2>/dev/null); then
+      case $lx_l in "b true"*"b true"*) echo 1 ;; "b true"*) echo 2 ;; *) echo 0 ;; esac
+    else
+      case $(cat "$ROOT"/proc/acpi/button/lid/*/state 2>/dev/null) in *closed*) echo 2 ;; *) echo 0 ;; esac
+    fi
+  }
+  lid_closed() { [ "$(lid_state)" != 0 ]; }
+  # logind re-checks a closed lid when the last lock goes, and sleeps by itself unless docked. Sleeping
+  # again here would only put the computer back to sleep when the lid next opens
+  sleep_now() { :; }
+  # Serious: any thermal zone at one of its own passive or hot trip points, or within 10 °C of its
+  # critical one (millidegrees; trips at 40 °C or less are placeholders). Battery °C from its temp, in
+  # 0.1 °C, which many x86 laptops don't have. Unreadable zones are skipped; none readable: unknown
+  heat() {
+    thermal=$(awk 'BEGIN {
+        for (i = 1; i < ARGC; i++) {
+          f = ARGV[i] "/temp"; ok = (getline t < f) > 0; close(f)
+          if (!ok || t !~ /^-?[0-9]+$/) continue
+          seen = 1
+          for (j = 0; ; j++) {
+            f = ARGV[i] "/trip_point_" j "_type"; if ((getline type < f) <= 0) break; close(f)
+            f = ARGV[i] "/trip_point_" j "_temp"; ok = (getline trip < f) > 0; close(f)
+            if (!ok || trip + 0 <= 40000) continue
+            if ((type == "passive" || type == "hot") && t + 0 >= trip + 0) s = 2
+            if (type == "critical" && t + 0 >= trip - 10000) s = 2
+          }
+        }
+        if (seen) print s + 0
+      }' "$ROOT"/sys/class/thermal/thermal_zone* 2>/dev/null)
+    battery=$(awk 'function val(f,  v) { v = ""; if ((getline v < f) <= 0) v = ""; close(f); return v }
+      BEGIN { for (i = 1; i < ARGC; i++)
+        if (val(ARGV[i] "/type") == "Battery" && val(ARGV[i] "/scope") != "Device" &&
+            (t = val(ARGV[i] "/temp")) ~ /^-?[0-9]+$/) { print int(t / 10); exit } }' \
+      "$ROOT"/sys/class/power_supply/* 2>/dev/null)
+  }
+  # The computer's own batteries (scope Device is a mouse or a headset), averaged; on battery when one
+  # is discharging, or no charger (Mains, USB) is online
+  power() {
+    lx_p=$(awk 'function val(f,  v) { v = ""; if ((getline v < f) <= 0) v = ""; close(f); return v }
+      BEGIN {
+        for (i = 1; i < ARGC; i++) {
+          type = val(ARGV[i] "/type")
+          if (type == "Mains" || type ~ /^USB/) { mains = 1; if (val(ARGV[i] "/online") + 0 == 1) online = 1 }
+          else if (type == "Battery" && val(ARGV[i] "/scope") != "Device") {
+            c = val(ARGV[i] "/capacity"); if (c ~ /^[0-9]+$/) { sum += c; n++ }
+            if (val(ARGV[i] "/status") == "Discharging") dis = 1
+          }
+        }
+        printf "%d %s\n", dis || (n && mains && !online), n ? int(sum / n + 0.5) : ""
+      }' "$ROOT"/sys/class/power_supply/* 2>/dev/null)
+    onbatt=${lx_p%% *}; charge=${lx_p#* }
+  }
+  notify() { notify-send claude-coffee "$1" >/dev/null 2>&1; }
+  # procps's %cpu is a lifetime average (CPU time over elapsed time), not recent use. So every check
+  # keeps each process's CPU time in $C/cpu, and the next one reports the use since, for processes it
+  # recognizes by PID and start time (a reused PID starts afresh). Otherwise the lifetime average stands
+  # in: for a process younger than the last check that's the same thing, and with no usable snapshot
+  # (the first check, one under 10 s or over 5 minutes old, say after sleep) it's the best there is
+  procs() {
+    ps -A -o pid=,ppid=,etime=,time=,pcpu=,args= | awk -v now="$(date +%s)" -v snap="$C/cpu" -v out="$C/cpu.$$" '
+      function secs(s,  n, t) { n = split(s, t, /[-:]/); return t[n] + 60 * t[n - 1] + 3600 * t[n - 2] + 86400 * t[n - 3] }
+      BEGIN {
+        if ((getline t0 < snap) > 0) { age = now - t0
+          if (age >= 10 && age <= 300) while ((getline l < snap) > 0) { split(l, f, " "); start[f[1]] = f[2]; used[f[1]] = f[3] } }
+        close(snap)
+        print now > out
+      }
+      { s = now - secs($3); c = secs($4); cpu = $5
+        print $1, s, c > out
+        if (($1 in used) && s - start[$1] <= 5 && start[$1] - s <= 5 && c >= used[$1]) cpu = (c - used[$1]) * 100 / age
+        a = $0; sub(/^[ \t]*[^ \t]+[ \t]+[^ \t]+[ \t]+[^ \t]+[ \t]+[^ \t]+[ \t]+[^ \t]+[ \t]+/, "", a)
+        printf "%s %s %s %.1f %s\n", $1, $2, $3, cpu, a }'
+    mv -f "$C/cpu.$$" "$C/cpu" 2>/dev/null
+  }
+  # Linux OpenSSH titles them "sshd: you@pts/0" or (9.8+) "sshd-session: you@pts/0", as on macOS
+  ssh_logins() { pgrep -u "$(id -u)" -f '^sshd(-session)?: [^ ]+@'; }
+  login_ages() { ps -o etime= -p "$(printf '%s' "$1" | tr '\n' ,)"; }
+  # polkit's answer for this login, without a password prompt (stdin isn't a terminal)
+  can_hold() {
+    systemd-inhibit --what=sleep:idle:handle-lid-switch --mode=block --who=claude-coffee --why='status check' true </dev/null
+  }
+  agent_loaded() { systemctl --user is-active --quiet claude-coffee.timer; }
   ;;
 MINGW*|MSYS*|CYGWIN*)   # Windows, in Git Bash
   exit 0   # Windows backend: to do
