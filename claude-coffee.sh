@@ -189,7 +189,7 @@ Linux)
   agent_loaded() { systemctl --user is-active --quiet claude-coffee.timer; }
   ;;
 MINGW*|MSYS*|CYGWIN*)   # Windows, in Git Bash
-  MACHINE=PC OWN_KEEPAWAKE= HOLD_LABEL='power plan' AGENT_LABEL='scheduled task'
+  MACHINE=PC OWN_KEEPAWAKE='' HOLD_LABEL='power plan' AGENT_LABEL='scheduled task'
   # Keeping awake is a change to the active power plan: closing the lid does nothing and the PC never
   # sleeps by itself, plugged in and on battery. That's what holds with the lid closed (power requests
   # and SetThreadExecutionState don't), and Windows lets you change your own plan without admin. hold 1
@@ -487,7 +487,7 @@ PS1
       elif [ "$REMOTE" = 1 ]; then win_gather ssh; fi ;;
   esac
   # What the check found, if it's from the last few minutes; anything else is unknown
-  win_lid= win_onbatt=0 win_charge= win_thermal= win_battery= win_ssh=
+  win_lid='' win_onbatt=0 win_charge='' win_thermal='' win_battery='' win_ssh=''
   if [ -n "$(find "$WC" -mmin -3 2>/dev/null)" ]; then
     while read -r w_k w_a w_b; do
       case $w_k in

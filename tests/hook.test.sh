@@ -46,7 +46,7 @@ cat >"$T/bin/sleep" <<EOF
 [ -f $T/during-sleep ] && sh $T/during-sleep
 exit 0
 EOF
-UNAME= HOLD_LABEL= AGENT_LABEL= RELEASE_SLEEPS=0   # the fixture sets these
+UNAME='' HOLD_LABEL='' AGENT_LABEL='' RELEASE_SLEEPS=0   # the fixture sets these
 # shellcheck source=/dev/null
 . "$R/tests/fixtures/$FX.sh"
 printf '#!/bin/sh\necho %s\n' "$UNAME" >"$T/bin/uname"
