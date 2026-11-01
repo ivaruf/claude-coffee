@@ -15,6 +15,8 @@
 # A fixture sets UNAME (what uname -s prints), HOLD_LABEL and AGENT_LABEL (status lines), and
 # RELEASE_SLEEPS: 1 if the system sleeps by itself when the hold ends with the lid closed (logind),
 # 0 if claude-coffee has to (macOS); its fakes then touch $T/slept on release or on "sleep now".
+# A fixture may define fx_sync, called before every run, to turn the knobs into the files its backend
+# reads (a fake /sys tree, a cache), and may export variables for the script (say, a sysfs root).
 set -eu
 R=$(cd "$(dirname "$0")/.." && pwd); S=$R/claude-coffee.sh
 case ${1:-$(uname -s)} in
@@ -50,7 +52,7 @@ UNAME= HOLD_LABEL= AGENT_LABEL= RELEASE_SLEEPS=0   # the fixture sets these
 printf '#!/bin/sh\necho %s\n' "$UNAME" >"$T/bin/uname"
 chmod +x "$T/bin/"*
 
-run() { HOME=$T PATH="$T/bin:$PATH" sh "$S" "$@"; }
+run() { if command -v fx_sync >/dev/null 2>&1; then fx_sync; fi; HOME=$T PATH="$T/bin:$PATH" sh "$S" "$@"; }
 hook() { printf '{"session_id":"%s"%s}' "$2" "${3:-}" | run "$1"; cat "$T/state"; }
 chk() { run check </dev/null; cat "$T/state"; }
 ago() { date -v-"$1"M +%Y%m%d%H%M 2>/dev/null || date -d "$1 minutes ago" +%Y%m%d%H%M; }
