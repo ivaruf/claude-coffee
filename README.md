@@ -15,8 +15,8 @@
 </p>
 
 <p align="center">
-  <a href="#why-not-caffeinate-or-amphetamine">Why not caffeinate?</a> ·
   <a href="#quick-start">Quick start</a> ·
+  <a href="#why-not-caffeinate-or-amphetamine">Why not caffeinate?</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#remote-mode">Remote mode</a> ·
   <a href="#faq">FAQ</a> ·
@@ -28,46 +28,6 @@
 You ask Claude Code for a big refactor, close the lid, and walk to a meeting. macOS goes to sleep, the turn freezes, and you come back to a half-finished job. Turning sleep off for good isn't better: you forget to turn it back on, and the Mac cooks in your bag.
 
 **claude-coffee ties sleep to what Claude is actually doing.** A handful of Claude Code hooks keep track of every session that is mid-turn. While any of them is working, the Mac stays awake, lid closed included. When the last one finishes, sleep comes back, and if the lid is already shut, the Mac goes to sleep about a second later.
-
-<p align="center">
-  <img src="docs/assets/brewing.svg" alt="An open MacBook between a plant and a steaming mug, with Claude Code at work: Brewing, 12 minutes 40 seconds. A coffee cup in the menu bar shows the Mac is being kept awake." width="100%">
-</p>
-
-## Why not caffeinate or Amphetamine?
-
-Each one solves half the problem. `caffeinate` lets the Mac sleep again, but closing the lid still puts it to sleep in the middle of Claude's work. Amphetamine keeps a closed Mac running, but it keeps running until you remember to turn it off.
-
-**With claude-coffee you can close the lid, *and* your Mac still gets to sleep.**
-
-<p align="center">
-  <img src="docs/assets/compare.svg" alt="Timeline of closing the lid mid-task. caffeinate: the Mac sleeps when the lid closes and Claude stops mid-task. Amphetamine: awake through the lid closing and long after Claude is done, until you turn it off. claude-coffee: awake through the lid closing, asleep a second after Claude finishes." width="100%">
-</p>
-
-<p align="center">
-  <img src="docs/assets/lid-closed.svg" alt="Lid closed, still brewing: Claude sits on the closed MacBook with a steaming coffee, and the Mac is awake." width="49%">
-  <img src="docs/assets/asleep.svg" alt="Done, fast asleep: Claude sleeps on the still-closed MacBook next to an empty mug, and the Mac is asleep." width="49%">
-</p>
-
-| | Close the lid mid-task | Sleeps again by itself | Knows when Claude is working |
-|---|:---:|:---:|:---:|
-| `caffeinate` (Claude Code already runs it during a turn) | ✗ the Mac sleeps, Claude stops | ✓ | ✓ |
-| Amphetamine, closed-display mode | ✓ | ✗ only when you end the session or its timer runs out | ✗ |
-| `sudo pmset -a disablesleep 1` by hand | ✓ | ✗ only when you remember to undo it | ✗ |
-| **claude-coffee** | ✓ | ✓ a second after the last turn ends | ✓ |
-
-Watching for a `claude` process doesn't work either: an idle session is still a process, and most people have several open. The question that matters is *is any session mid-turn?*, and only the hooks know that.
-
-## Features
-
-- **Awake while Claude works**: lid closed, on battery, across any number of sessions at once
-- **Asleep when it's done**: no toggle, no timer, nothing to remember. A lid closed mid-turn sleeps right after the turn ends
-- **Background-aware**: a turn that ends with subagents or shells still running stays awake until they report back
-- **Remote mode**: SSH in from your phone and the Mac stays up between turns, too. It lapses after an hour of quiet
-- **Heat guard**: if the closed Mac gets hot, say in a bag, it goes to sleep anyway, mid-turn, and leaves a notification saying why
-- **Can't get stuck awake**: markers expire after 30 minutes and a launch agent re-checks every minute, so Esc, crashes and `kill -9` all wear off
-- **Least privilege**: sudo is allowed to run exactly two commands, `pmset -a disablesleep 0` and `… 1`. Nothing else
-- **Silent**: the hooks print nothing, so not a single token ends up in Claude's context
-- **Tested**: CI runs the hook against fake `pmset`, `sudo` and `ioreg`, and the installer against a throwaway `$HOME`
 
 ## Quick start
 
@@ -110,6 +70,46 @@ Re-running `./install.sh` is safe; it's also how you update. macOS will show a n
 **Requirements:** macOS, Claude Code, and `jq` (built into recent macOS; otherwise `brew install jq`).
 
 </details>
+
+<p align="center">
+  <img src="docs/assets/brewing.svg" alt="An open MacBook between a plant and a steaming mug, with Claude Code at work: Brewing, 12 minutes 40 seconds. A coffee cup in the menu bar shows the Mac is being kept awake." width="100%">
+</p>
+
+## Why not caffeinate or Amphetamine?
+
+Each one solves half the problem. `caffeinate` lets the Mac sleep again, but closing the lid still puts it to sleep in the middle of Claude's work. Amphetamine keeps a closed Mac running, but it keeps running until you remember to turn it off.
+
+**With claude-coffee you can close the lid, *and* your Mac still gets to sleep.**
+
+<p align="center">
+  <img src="docs/assets/compare.svg" alt="Timeline of closing the lid mid-task. caffeinate: the Mac sleeps when the lid closes and Claude stops mid-task. Amphetamine: awake through the lid closing and long after Claude is done, until you turn it off. claude-coffee: awake through the lid closing, asleep a second after Claude finishes." width="100%">
+</p>
+
+<p align="center">
+  <img src="docs/assets/lid-closed.svg" alt="Lid closed, still brewing: Claude sits on the closed MacBook with a steaming coffee, and the Mac is awake." width="49%">
+  <img src="docs/assets/asleep.svg" alt="Done, fast asleep: Claude sleeps on the still-closed MacBook next to an empty mug, and the Mac is asleep." width="49%">
+</p>
+
+| | Close the lid mid-task | Sleeps again by itself | Knows when Claude is working |
+|---|:---:|:---:|:---:|
+| `caffeinate` (Claude Code already runs it during a turn) | ✗ the Mac sleeps, Claude stops | ✓ | ✓ |
+| Amphetamine, closed-display mode | ✓ | ✗ only when you end the session or its timer runs out | ✗ |
+| `sudo pmset -a disablesleep 1` by hand | ✓ | ✗ only when you remember to undo it | ✗ |
+| **claude-coffee** | ✓ | ✓ a second after the last turn ends | ✓ |
+
+Watching for a `claude` process doesn't work either: an idle session is still a process, and most people have several open. The question that matters is *is any session mid-turn?*, and only the hooks know that.
+
+## Features
+
+- **Awake while Claude works**: lid closed, on battery, across any number of sessions at once
+- **Asleep when it's done**: no toggle, no timer, nothing to remember. A lid closed mid-turn sleeps right after the turn ends
+- **Background-aware**: a turn that ends with subagents or shells still running stays awake until they report back
+- **Remote mode**: SSH in from your phone and the Mac stays up between turns, too. It lapses after an hour of quiet
+- **Heat guard**: if the closed Mac gets hot, say in a bag, it goes to sleep anyway, mid-turn, and leaves a notification saying why
+- **Can't get stuck awake**: markers expire after 30 minutes and a launch agent re-checks every minute, so Esc, crashes and `kill -9` all wear off
+- **Least privilege**: sudo is allowed to run exactly two commands, `pmset -a disablesleep 0` and `… 1`. Nothing else
+- **Silent**: the hooks print nothing, so not a single token ends up in Claude's context
+- **Tested**: CI runs the hook against fake `pmset`, `sudo` and `ioreg`, and the installer against a throwaway `$HOME`
 
 ## How it works
 
