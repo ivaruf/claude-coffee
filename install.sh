@@ -19,11 +19,12 @@ main() {
   [ "$(uname)" = Darwin ] || die "macOS only: this uses pmset and launchd"
   command -v jq >/dev/null || die "jq is missing: brew install jq"
 
-  # 1. The hook script: the one next to this installer in a clone; piped through sh, there is no
-  #    "next to", so it comes from the same branch on GitHub
+  # 1. The hook script: in a clone, the one next to this installer. Piped through sh, $0 is just "sh"
+  #    and whatever lies in the current folder is irrelevant, so it comes from the same branch on GitHub
   mkdir -p ~/.claude/hooks
   src=$(dirname "$0")/claude-coffee.sh
-  if [ -f "$0" ] && [ -f "$src" ]; then
+  case $0 in *install.sh) [ -f "$src" ] || src= ;; *) src= ;; esac
+  if [ -n "$src" ]; then
     install -m 0755 "$src" "$HOOK"
     step script "$HOOK"
   else

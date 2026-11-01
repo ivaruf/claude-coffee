@@ -78,6 +78,29 @@ Measured on 2026-11-01, same Mac, on battery.
 | Does heavy work alone trip it? | 90 s of load on all cores left the thermal state at *nominal* and the battery at 25 °C. The battery's lifetime maximum is 42 °C, below the 45 °C limit. |
 | Not tested yet | An actual bag, and the thermal state reaching *serious* on real hardware. The tests fake both. |
 
+## Battery guard
+
+| Question | Result |
+|---|---|
+| Is there an official low-battery threshold? | No. Apple publishes none. macOS shows "Low Battery: Your Mac will sleep soon unless plugged into a power outlet" at about 10% ([Apple Community](https://discussions.apple.com/thread/255561785)). |
+| Does `disablesleep 1` keep macOS from its own low-battery sleep? | Not tested, deliberately: that means running the battery flat. The guard doesn't rely on either answer, and it steps in at 20%, well before that point. |
+| Reading the charge without root | `pmset -g batt` prints `Now drawing from 'AC Power'` or `'Battery Power'`, then a line with the charge, such as `100%; finishing charge`. Desktop Macs have no battery line, so the guard never trips there. |
+| Not tested yet | A real discharge to 20%. The tests fake `pmset -g batt`. |
+
+## Long tool calls
+
+Measured on 2026-11-01, same Mac. The question: how to tell one long tool call (a 45-minute build) from a turn that was interrupted with Esc, when neither fires a hook.
+
+| Question | Result |
+|---|---|
+| Does Claude Code have its own sign of being busy? | Yes. While a turn is in progress, the `claude` process has a child `caffeinate -i -t 300` (prevent idle sleep, at most 5 minutes). |
+| Does it last through one long tool call? | Yes. During one 7-minute tool call with no hooks firing, sampled every 30 s, a `caffeinate` child was always there: Claude Code started a new one about every 4 minutes, before the old one timed out (new PIDs at 3:55 and 7:55 in). |
+| Background tasks after the turn has ended | Not covered. With the turn over and a 7-minute background task running, the `caffeinate` disappeared about 30 s after the turn ended, at 2:50 of its 5 minutes, so Claude Code stopped it. No new one followed. |
+| Esc | Not tested. Claude Code stopping `caffeinate` at the end of a normal turn suggests Esc does the same. `MAX_QUIET_HOURS` (4) caps the case where it doesn't. |
+| Telling Claude Code's `caffeinate` apart | Its parent process is `claude` (`node … claude-code …` for npm installs). A `caffeinate` you start yourself has your shell as its parent and doesn't count. |
+
+So a marker no hook has touched for 30 minutes is kept while any Claude Code process has a `caffeinate` child, for up to 4 hours. This depends on undocumented Claude Code behavior. If that changes, claude-coffee falls back to the plain 30-minute rule.
+
 ## Ideas that didn't survive
 
 The design started in a phone chat with Claude. Some first drafts were replaced once they met the details:

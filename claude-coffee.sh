@@ -7,16 +7,19 @@
 #        claude-coffee.sh status   for you; changes nothing
 
 C=~/.claude/coffee
-STALE_MINUTES=30    # drop a marker no hook has touched for this long (Esc never fires Stop)
+STALE_MINUTES=30    # drop a marker no hook has touched for this long (Esc never fires Stop) ...
+MAX_QUIET_HOURS=4   # ... unless Claude Code is still at work (one long tool call); this caps that
 REMOTE=1            # 0 = no remote mode
 REMOTE_MINUTES=60   # remote mode lapses this long after the last hook event and the SSH login
 HEAT_GUARD=1        # 0 = never let heat end a turn early
 HOT_BATTERY_C=45    # with the lid closed, a battery this hot (°C) means sleep, mid-turn or not
+LOW_BATTERY=20      # on battery at this charge (%) or less, stop keeping the Mac awake; 0 = never
 # shellcheck source=/dev/null
 [ -f "$C/config" ] && . "$C/config"
 D=$C/busy   # one marker file per session that is mid-turn
 L=$C/last   # touched on every hook event
 H=$C/hot    # the heat guard tripped; stays until the lid opens
+B=$C/low    # the battery guard tripped; goes when the Mac is plugged in or charged above LOW_BATTERY
 mkdir -p "$D"
 
 case $1 in
@@ -34,8 +37,21 @@ if [ -n "$sid" ]; then case $1 in
   off) if [ "${bg:-0}" -gt 0 ]; then touch "$D/$sid"; else rm -f "$D/$sid"; fi ;;
 esac; fi
 
-[ "$1" = status ] || find "$D" -type f -mmin +"$STALE_MINUTES" -delete
-busy=$(find "$D" -type f ! -mmin +"$STALE_MINUTES" | wc -l | tr -d ' ')
+# Claude Code runs its own "caffeinate -i -t 300" while a turn is in progress and renews it about every
+# 4 minutes, also through one long tool call that fires no hooks; it stops it when the turn ends (see
+# docs/verification.md). So while one runs as a child of Claude Code, a quiet marker isn't stale yet.
+claude_working() {
+  for k in $(pgrep -x caffeinate); do
+    ps -o args= -p "$(ps -o ppid= -p "$k" | tr -d ' ')" 2>/dev/null | grep -q claude && return 0
+  done
+  return 1
+}
+limit=$STALE_MINUTES
+if [ -n "$(find "$D" -type f -mmin +"$STALE_MINUTES")" ] && claude_working; then
+  limit=$((MAX_QUIET_HOURS * 60))
+fi
+[ "$1" = status ] || find "$D" -type f -mmin +"$limit" -delete
+busy=$(find "$D" -type f ! -mmin +"$limit" | wc -l | tr -d ' ')
 want=0; [ "$busy" = 0 ] || want=1
 
 # Remote mode: while you're logged in over SSH (say, from your phone), also stay awake between turns
@@ -81,6 +97,30 @@ elif [ "$want" = 1 ] && [ "$HEAT_GUARD" = 1 ] && [ "$1" != status ]; then
 fi
 [ "$hot" = 1 ] && want=0
 
+# Battery guard: with sleep switched off, a Mac on battery could run itself flat (macOS starts warning
+# at about 10% that it will sleep soon, and disablesleep may keep it from doing so). On battery at
+# LOW_BATTERY % or less: stop keeping it awake and, with the lid closed, sleep now. Plugging in clears it.
+power() {   # on battery (1/0) and the charge in %, from pmset -g batt
+  b=$(pmset -g batt)
+  case $b in *"'Battery Power'"*) onbatt=1 ;; *) onbatt=0 ;; esac
+  charge=$(printf '%s\n' "$b" | grep -oE '[0-9]+%' | head -n 1 | tr -d %)
+}
+low=0
+if [ "$LOW_BATTERY" -gt 0 ] && { [ "$want" = 1 ] || [ -e "$B" ]; } && [ "$1" != status ]; then
+  power
+  if [ "$onbatt" = 1 ] && [ "${charge:-100}" -le "$LOW_BATTERY" ]; then
+    if [ "$want" = 1 ]; then
+      low=1; want=0
+      if [ ! -e "$B" ]; then
+        echo "$(date '+%Y-%m-%d %H:%M'), battery at $charge%" >"$B"
+        osascript -e "display notification \"Battery at $charge%, so claude-coffee stopped keeping your Mac awake. Plug it in to carry on.\" with title \"claude-coffee\"" >/dev/null 2>&1
+      fi
+    fi
+  else
+    rm -f "$B"
+  fi
+fi
+
 # pmset -g shows "SleepDisabled 1", "SleepDisabled 0", or no line when it is 0: read the value, never the line
 have=$(pmset -g | awk '/SleepDisabled/{print $2}')
 
@@ -110,6 +150,13 @@ if [ "$1" = status ]; then
   printf '  lid            %s\n' "$(if ioreg -r -k AppleClamshellState -d 1 | grep -q '"AppleClamshellState" = Yes'; then echo closed; else echo open; fi)"
   printf '  heat           %s\n' "$h"
   printf '  heat guard     %s\n' "$g"
+  power
+  if [ "$onbatt" = 1 ]; then p="on battery, ${charge:-?}%"; else p="on AC power${charge:+, battery $charge%}"; fi
+  if [ -e "$B" ]; then bg="tripped $(cat "$B"); clears when plugged in"
+  elif [ "$LOW_BATTERY" -gt 0 ]; then bg="armed: on battery at ${LOW_BATTERY}% or less → sleep"
+  else bg='disabled in config'; fi
+  printf '  power          %s\n' "$p"
+  printf '  battery guard  %s\n' "$bg"
   printf '  sudo pmset     %s\n' "$(ok nopasswd)"
   printf '  launch agent   %s\n' "$(ok launchctl print "gui/$(id -u)/com.github.ivaruf.claude-coffee")"
   exit 0
@@ -122,9 +169,9 @@ fi
 # closed Mac running (AppleClamshellCausesSleep = No).
 if [ "$want" = 0 ] && [ "$have" = 1 ] && [ "$lid" = 2 ]; then
   sleep 1
-  # Unless it's too hot: a turn may have started during that second (a marker, or another hook's
+  # Unless a guard tripped: a turn may have started during that second (a marker, or another hook's
   # disablesleep 1). Then stay up
-  if [ "$hot" = 1 ] || { [ -z "$(ls "$D")" ] && [ "$(pmset -g | awk '/SleepDisabled/{print $2}')" != 1 ]; }; then
+  if [ "$hot" = 1 ] || [ "$low" = 1 ] || { [ -z "$(ls "$D")" ] && [ "$(pmset -g | awk '/SleepDisabled/{print $2}')" != 1 ]; }; then
     pmset sleepnow >/dev/null 2>&1
   fi
 fi

@@ -103,6 +103,9 @@ rm "$T/.claude/hooks/claude-coffee.sh"; touch "$T/offline"
 if piped install.sh; then exit 1; fi; [ ! -e "$T/.claude/hooks/claude-coffee.sh" ]; t   # offline: refuses
 rm "$T/offline"; touch "$T/portal"
 if piped install.sh; then exit 1; fi; [ ! -e "$T/.claude/hooks/claude-coffee.sh" ]; t   # a Wi-Fi login page isn't installed
-rm "$T/portal"; piped install.sh
+rm "$T/portal"
+printf '#!/bin/sh\n# decoy\n' >"$T/empty/claude-coffee.sh"; : >"$T/empty/sh"
+piped install.sh; cmp -s "$T/.claude/hooks/claude-coffee.sh" "$R/claude-coffee.sh"; t  # piped next to a decoy (and a file named sh): still downloads
+rm "$T/empty/claude-coffee.sh" "$T/empty/sh"
 piped uninstall.sh; [ "$(ours)" = 0 ]; [ ! -e "$T/.claude/hooks/claude-coffee.sh" ]; t  # piped uninstall works too
 echo "install: all $n checks passed"

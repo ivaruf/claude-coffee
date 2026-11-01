@@ -54,6 +54,8 @@ claude-coffee
   lid            closed
   heat           battery 31 °C, thermal state nominal
   heat guard     armed: lid closed and serious thermal state or battery 45 °C → sleep
+  power          on battery, 64%
+  battery guard  armed: on battery at 20% or less → sleep
   sudo pmset     ok
   launch agent   ok
 ```
@@ -112,7 +114,9 @@ Watching for a `claude` process doesn't work either: an idle session is still a 
 - **Background-aware**: a turn that ends with subagents or shells still running stays awake until they report back
 - **Remote mode**: SSH in from your phone and the Mac stays up between turns, too. It lapses after an hour of quiet
 - **Heat guard**: if the closed Mac gets hot, say in a bag, it goes to sleep anyway, mid-turn, and leaves a notification saying why
-- **Can't get stuck awake**: markers expire after 30 minutes and a launch agent re-checks every minute, so Esc, crashes and `kill -9` all wear off
+- **Battery guard**: on battery at 20% or less, it stops keeping the Mac awake, so it never runs itself flat
+- **Long jobs welcome**: one tool call can run for hours without a single hook firing, and the Mac stays up as long as Claude Code is still working on it (up to 4 hours)
+- **Can't get stuck awake**: markers expire after 30 quiet minutes and a launch agent re-checks every minute, so Esc, crashes and `kill -9` all wear off
 - **Least privilege**: sudo is allowed to run exactly two commands, `pmset -a disablesleep 0` and `… 1`. Nothing else
 - **Silent**: the hooks print nothing, so not a single token ends up in Claude's context
 - **Tested**: CI runs the hook against fake `pmset`, `sudo` and `ioreg`, and the installer against a throwaway `$HOME`
@@ -125,10 +129,10 @@ Watching for a `claude` process doesn't work either: an idle session is still a 
 
 1. **One marker per busy session.** Hooks keep a file per session in `~/.claude/coffee/busy/`. `UserPromptSubmit` and `PreToolUse` create or refresh it; `Stop`, `StopFailure` and `SessionEnd` remove it. A `Stop` that still lists `background_tasks` keeps it.
 2. **Any marker means awake.** If any marker exists, the script runs `pmset -a disablesleep 1`; if none do, `0`. That is the one switch that also holds with the lid closed.
-3. **Markers go stale.** Pressing Esc never fires `Stop`, so a marker no hook has touched for 30 minutes is dropped.
+3. **Markers go stale, unless Claude Code is still at work.** Pressing Esc never fires `Stop`, so a marker no hook has touched for 30 minutes is dropped. One long tool call fires no hooks either, but Claude Code keeps its own `caffeinate` running for as long as a turn is in progress. While it does, the marker stays, for up to 4 hours.
 4. **A launch agent re-checks every minute**, so stale markers expire and the heat guard sees long jobs, even when no hook is firing.
 5. **The lid gets a second chance.** macOS decides on lid sleep only at the moment the lid closes. If it closed mid-turn, switching sleep back on isn't enough, so the script runs `pmset sleepnow` a second later. That step is skipped when an external display keeps a closed Mac running.
-6. **The heat guard has the last word.** With the lid closed, if macOS reports *serious* thermal pressure or the battery reaches 45 °C, sleep is allowed and the Mac sleeps now, even mid-turn. It stays that way until you open the lid, so a brief wake in the bag can't start the heat up again.
+6. **The guards have the last word.** With the lid closed, if macOS reports *serious* thermal pressure or the battery reaches 45 °C, sleep is allowed and the Mac sleeps now, even mid-turn. It stays that way until you open the lid, so a brief wake in the bag can't start the heat up again. On battery at 20% or less, the same happens until you plug in.
 
 Every one of those steps exists because something needed it. [The field notes](docs/verification.md) list what was checked on a real Mac, including two bugs that only showed up there.
 
@@ -153,11 +157,13 @@ So while you're logged in over SSH, claude-coffee also keeps the Mac awake when 
 Optional. Create `~/.claude/coffee/config` with any of these:
 
 ```sh
-STALE_MINUTES=30   # drop a session's marker after this long with no hook activity
+STALE_MINUTES=30   # drop a session's marker after this long with no hook activity ...
+MAX_QUIET_HOURS=4  # ... or up to this long while Claude Code is still working (one long tool call)
 REMOTE=1           # 0 turns remote mode off
 REMOTE_MINUTES=60  # how long remote mode lasts after the last activity
 HEAT_GUARD=1       # 0 turns the heat guard off
 HOT_BATTERY_C=45   # with the lid closed, a battery this hot (°C) means sleep
+LOW_BATTERY=20     # on battery at this charge (%) or less, stop keeping the Mac awake; 0 turns it off
 ```
 
 Raise `STALE_MINUTES` if your permission prompts tend to wait longer than half an hour, or if you run background jobs that stay silent that long.
@@ -183,6 +189,16 @@ Start a heavy job, close the lid and toss the Mac in a bag, and it can't get rid
 
 Sources and measurements are in the [field notes](docs/verification.md#heat-guard). It's a safety net, not an invitation: closed on a desk is fine, closed in a bag still isn't.
 
+### Battery guard
+
+<p align="center">
+  <img src="docs/assets/low-battery.svg" alt="Little Claude sits drowsily on the closed MacBook, holding its mug upside down as the last drop falls out. A battery gauge reads 20 percent, on battery. Status: battery low, then asleep." width="100%">
+</p>
+
+With sleep switched off, a Mac on battery could run itself flat, and macOS's own low-battery sleep may not get its chance. So on battery at 20% or less, claude-coffee stops keeping the Mac awake, even mid-turn. With the lid closed, the Mac goes to sleep right away. It leaves a notification saying why, and plugging in clears it.
+
+Apple publishes no number for this. macOS starts warning "Your Mac will sleep soon unless plugged into a power outlet" at about 10%, and 20% is twice that. It also keeps the battery out of deep discharge and matches what similar tools use. `LOW_BATTERY` changes it.
+
 ## Verify it yourself
 
 ```sh
@@ -200,10 +216,10 @@ log show --last 1h --style compact --predicate 'process == "kernel" AND eventMes
 
 ## Known limits
 
-- Background work that runs longer than 30 minutes without any hook firing isn't covered: the marker goes stale and the Mac may sleep.
+- One long tool call is covered for up to 4 hours. Background shells that keep running after the turn has ended are only covered for 30 minutes after the last hook: Claude Code stops its `caffeinate` when the turn ends, and a long build in the background looks just like a dev server left running. For a job that has to finish, have Claude wait for it within the turn.
 - A permission prompt left unanswered for more than 30 minutes counts as stale, too.
-- After Esc, the Mac can stay awake for up to about 31 minutes (30 minutes stale limit plus the 1 minute check).
-- The heat guard hasn't been tried in an actual bag yet, and during one long tool call it only reacts once a minute.
+- After Esc, the Mac can stay awake for up to about 31 minutes (30 minutes stale limit plus the 1 minute check). That assumes Claude Code stops its `caffeinate` on Esc, as it does when a turn ends normally (untested); otherwise it's up to 4 hours.
+- The heat guard hasn't been tried in an actual bag yet, and the battery guard hasn't been run down to 20% for real (the tests fake both). During one long tool call, both react once a minute.
 - A fanless MacBook Air doing heavy work with the lid closed and no external display can reach *serious* on a desk too. The heat guard then puts it to sleep.
 - Verified on macOS 26 on Apple silicon. Intel Macs and older macOS versions should work but haven't been tested; [reports welcome](https://github.com/ivaruf/claude-coffee/issues/new/choose).
 

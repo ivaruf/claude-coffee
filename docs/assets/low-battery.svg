@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 400" width="900" height="400" role="img" aria-labelledby="title desc">
+  <title id="title">Running low</title>
+  <desc id="desc">Little Claude sits drowsily on the closed MacBook, holding its mug upside down while the last drop falls out. A battery gauge reads 20 percent, on battery. Two status chips read: battery low, then asleep. Caption: Running low? It goes to sleep before the battery does.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2a1d17"/>
+      <stop offset="1" stop-color="#120c0a"/>
+    </linearGradient>
+    <radialGradient id="dim" cx="0.42" cy="0.55" r="0.5">
+      <stop offset="0" stop-color="#e8a33d" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#e8a33d" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d98a6c"/>
+      <stop offset="1" stop-color="#b9664a"/>
+    </linearGradient>
+    <linearGradient id="alu" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d9d2cb"/>
+      <stop offset="1" stop-color="#a39b94"/>
+    </linearGradient>
+    <style>
+      .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+      .drop { animation: drip 2.4s ease-in infinite; }
+      @keyframes drip { 0% { opacity: 0; transform: translateY(-6px); } 25% { opacity: 1; } 100% { opacity: 0; transform: translateY(26px); } }
+      .blinkbar { animation: low 1.4s steps(1) infinite; }
+      @keyframes low { 50% { opacity: .35; } }
+      .nod { animation: nod 3.2s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 100%; }
+      @keyframes nod { 50% { transform: rotate(-3deg); } }
+      @media (prefers-reduced-motion: reduce) { .drop, .blinkbar, .nod { animation: none; } }
+    </style>
+  </defs>
+
+  <rect width="900" height="400" rx="24" fill="url(#bg)"/>
+  <rect width="900" height="400" rx="24" fill="url(#dim)"/>
+
+  <!-- status: battery low → asleep -->
+  <rect x="24" y="24" width="134" height="30" rx="15" fill="#e8a33d"/>
+  <g transform="translate(40 32)">
+    <rect x="0" y="1" width="18" height="11" rx="2.5" fill="none" stroke="#1f140e" stroke-width="2"/>
+    <rect x="18.5" y="4.5" width="2.5" height="4" rx="1" fill="#1f140e"/>
+    <rect x="2.5" y="3.5" width="4" height="6" rx="1" fill="#1f140e"/>
+  </g>
+  <text x="68" y="44" class="sans" font-size="15" font-weight="700" fill="#1f140e">battery low</text>
+  <path d="M168 39 H192 M185 32 L193 39 L185 46" fill="none" stroke="#f3e6d8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="202" y="24" width="100" height="30" rx="15" fill="#5f80d8"/>
+  <g transform="translate(218 31)">
+    <circle cx="7" cy="8" r="7" fill="#0f1426"/>
+    <circle cx="10.5" cy="5.5" r="6" fill="#5f80d8"/>
+  </g>
+  <text x="238" y="44" class="sans" font-size="15" font-weight="700" fill="#0f1426">asleep</text>
+
+  <!-- desk -->
+  <path d="M0 316 H900 V376 A24 24 0 0 1 876 400 H24 A24 24 0 0 1 0 376 Z" fill="#2f2019"/>
+  <rect x="0" y="314" width="900" height="4" fill="#40291e"/>
+
+  <!-- closed MacBook -->
+  <rect x="180" y="292" width="340" height="22" rx="7" fill="url(#alu)"/>
+  <rect x="180" y="302" width="340" height="2" fill="#8f877f"/>
+  <rect x="320" y="309" width="60" height="4" rx="2" fill="#7e766f"/>
+
+  <!-- Claude, drowsy, mug upside down -->
+  <g transform="translate(342 236) scale(0.92)">
+    <ellipse cx="-20" cy="54" rx="15" ry="8" fill="#94503a"/>
+    <ellipse cx="20" cy="54" rx="15" ry="8" fill="#94503a"/>
+    <g class="nod">
+      <rect x="-50" y="-52" width="100" height="106" rx="46" fill="url(#body)"/>
+      <path d="M-2 -51 C -14 -60 -6 -72 6 -64" fill="none" stroke="#d98a6c" stroke-width="7" stroke-linecap="round"/>
+      <ellipse cx="-24" cy="-30" rx="15" ry="8" fill="#fff" opacity=".1" transform="rotate(-28 -24 -30)"/>
+      <!-- heavy-lidded eyes -->
+      <path d="M-23 -10 A 7 7 0 0 0 -9 -10 Z" fill="#2b1b13"/>
+      <path d="M7 -10 A 7 7 0 0 0 21 -10 Z" fill="#2b1b13"/>
+      <path d="M-25 -11 H-7 M5 -11 H23" stroke="#8a4632" stroke-width="3" stroke-linecap="round"/>
+      <ellipse cx="-31" cy="7" rx="7" ry="4" fill="#eaa48c" opacity=".55"/>
+      <ellipse cx="29" cy="7" rx="7" ry="4" fill="#eaa48c" opacity=".55"/>
+      <ellipse cx="-1" cy="12" rx="4.5" ry="5.5" fill="#2b1b13"/>
+    </g>
+    <!-- mug held upside down: empty -->
+    <g transform="translate(74 -40) rotate(180)">
+      <path d="M31 9 C 44 9 44 27 31 27" fill="none" stroke="#d8ccc0" stroke-width="6" stroke-linecap="round"/>
+      <rect x="0" y="0" width="33" height="38" rx="7" fill="#efe6dc"/>
+      <rect x="0" y="16" width="33" height="6" fill="#e8a33d" opacity=".85"/>
+    </g>
+    <ellipse cx="46" cy="-38" rx="10" ry="8" fill="#a85a41"/>
+    <ellipse cx="-44" cy="20" rx="8" ry="10" fill="#a85a41"/>
+  </g>
+  <!-- the last drop -->
+  <g class="drop"><path d="M399 202 C 403 209 405 213 399 217 C 393 213 395 209 399 202 Z" fill="#6b3f26"/></g>
+
+  <!-- battery gauge -->
+  <g transform="translate(676 0)">
+    <rect x="-36" y="96" width="72" height="190" rx="16" fill="#2b1b13" stroke="#f3e6d8" stroke-width="3"/>
+    <rect x="-16" y="84" width="32" height="14" rx="5" fill="#f3e6d8"/>
+    <rect x="-26" y="240" width="52" height="36" rx="8" fill="#e8a33d" class="blinkbar"/>
+    <g stroke="#f3e6d8" stroke-width="2" stroke-linecap="round" opacity=".35">
+      <line x1="-26" y1="146" x2="26" y2="146"/>
+      <line x1="-26" y1="194" x2="26" y2="194"/>
+    </g>
+    <text x="56" y="232" class="sans" font-size="30" font-weight="800" fill="#fbf4ec">20%</text>
+    <text x="56" y="258" class="sans" font-size="14" font-weight="600" fill="#e3c39a">on battery</text>
+  </g>
+
+  <text x="450" y="364" text-anchor="middle" class="sans" font-size="18" font-weight="700" fill="#fbf4ec">Running low? It goes to sleep before the battery does.</text>
+</svg>

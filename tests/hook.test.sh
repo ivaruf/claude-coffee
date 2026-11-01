@@ -9,18 +9,28 @@ mkdir "$T/bin"; echo 0 >"$T/state"
 cat >"$T/bin/pmset" <<EOF
 #!/bin/sh
 # Real pmset prints "SleepDisabled 0" or, on some days, no line at all for 0; $T/noline picks the latter
+if [ "\$2" = batt ]; then printf "Now drawing from '%s'\\n -InternalBattery-0 (id=1)\\t%s%%; discharging; present: true\\n" "\$(cat $T/src)" "\$(cat $T/pct)"; exit 0; fi
 if [ "\$1" = -g ]; then [ -e $T/noline ] && [ "\$(cat $T/state)" = 0 ] && exit 0; printf ' SleepDisabled\t\t%s\n' "\$(cat $T/state)"; exit 0; fi
 if [ "\$1" = sleepnow ]; then touch $T/slept; exit 0; fi
 echo "\$3" >$T/state
 EOF
+echo 'AC Power' >"$T/src"; echo 100 >"$T/pct"   # plugged in, full
 : >"$T/ssh"; echo 30-00:00:00 >"$T/etime"   # no SSH login; any login is old
+: >"$T/caf"; echo claude >"$T/parent"   # no caffeinate running; its parent would be Claude Code
 cat >"$T/bin/pgrep" <<EOF
 #!/bin/sh
-[ -s $T/ssh ] && cat $T/ssh
+case "\$*" in
+  *caffeinate*) [ -s $T/caf ] && cat $T/caf ;;
+  *) [ -s $T/ssh ] && cat $T/ssh ;;
+esac
 EOF
 cat >"$T/bin/ps" <<EOF
 #!/bin/sh
-cat $T/etime
+case "\$2" in
+  etime=) cat $T/etime ;;
+  ppid=) echo 777 ;;
+  args=) cat $T/parent ;;
+esac
 EOF
 echo No >"$T/lid"; echo 3032 >"$T/batt"; echo 0 >"$T/thermal"   # battery 3032 = 303.2 K = 30 °C
 cat >"$T/bin/ioreg" <<EOF
@@ -118,6 +128,28 @@ echo 05:12 >"$T/etime"
 [ "$(chk)" = 0 ]; t                 # remote mode switched off
 rm "$T/.claude/coffee/config"; : >"$T/ssh"
 [ "$(chk)" = 0 ]; t                 # logged out
+quiet() { hook on Q >/dev/null; touch -t "$(date -v-"$1" +%Y%m%d%H%M)" "$T/.claude/coffee/busy/Q"; }
+quiet 40M; [ "$(chk)" = 0 ]; t      # 40 min without a hook and Claude Code isn't working: stale
+echo 4242 >"$T/caf"; quiet 40M
+[ "$(chk)" = 1 ]; t                 # ... but with Claude Code's caffeinate running, it's one long tool call
+echo zsh >"$T/parent"; quiet 40M
+[ "$(chk)" = 0 ]; t                 # a caffeinate that isn't Claude Code's doesn't count
+echo claude >"$T/parent"; quiet 5H
+[ "$(chk)" = 0 ]; t                 # past MAX_QUIET_HOURS even Claude Code's caffeinate doesn't help
+: >"$T/caf"
+echo 'Battery Power' >"$T/src"; echo 50 >"$T/pct"
+[ "$(hook on V)" = 1 ]; t           # battery guard: on battery at 50%: awake
+echo 20 >"$T/pct"; : >"$T/notified"
+[ "$(hook on V)" = 0 ]; [ -e "$T/.claude/coffee/low" ]; t        # at 20%: sleep allowed, mid-turn
+[ "$(hook on V)" = 0 ]; [ "$(grep -c 'Battery at 20%' "$T/notified")" = 1 ]; t   # one notification, not one per check
+echo Yes >"$T/lid"; echo 1 >"$T/state"; rm -f "$T/slept"
+hook on V >/dev/null; [ -e "$T/slept" ]; t   # lid closed: asleep now
+echo No >"$T/lid"; echo 'AC Power' >"$T/src"
+[ "$(hook on V)" = 1 ]; [ ! -e "$T/.claude/coffee/low" ]; t      # plugged in: carry on, guard cleared
+echo 'Battery Power' >"$T/src"; echo 5 >"$T/pct"; echo 'LOW_BATTERY=0' >"$T/.claude/coffee/config"
+[ "$(hook on V)" = 1 ]; t           # guard switched off in config
+rm "$T/.claude/coffee/config"; echo 'AC Power' >"$T/src"; echo 100 >"$T/pct"
+[ "$(hook off V)" = 0 ]
 [ "$(hook on '../../x')" = 1 ]
 [ -e "$T/.claude/coffee/busy/x" ]; t   # path characters stripped from the session id
 out=$(HOME=$T PATH="$T/bin:$PATH" sh "$S" status)
@@ -125,6 +157,7 @@ out=$(HOME=$T PATH="$T/bin:$PATH" sh "$S" status)
 printf "%s\n" "$out" | grep -q "busy sessions  1"; t   # ... and reports
 printf "%s\n" "$out" | grep -q "lid            open"; t
 printf "%s\n" "$out" | grep -q "heat           battery 30 °C, thermal state nominal"; t   # real readings, faked here
+printf "%s\n" "$out" | grep -q "power          on AC power, battery 100%"; t
 printf "%s\n" "$out" | grep -q "sudo pmset     missing"; t   # no NOPASSWD rule ...
 echo '    (root) NOPASSWD: /usr/bin/pmset -a disablesleep 0, /usr/bin/pmset -a disablesleep 1' >"$T/sudoers"
 HOME=$T PATH="$T/bin:$PATH" sh "$S" status | grep -q "sudo pmset     ok"; t   # ... and with one

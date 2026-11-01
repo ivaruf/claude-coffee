@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Battery guard: on battery at 20% or less (`LOW_BATTERY`), claude-coffee stops keeping the Mac awake, even mid-turn, and with the lid closed the Mac sleeps right away. It leaves one notification, and plugging in clears it. `status` shows the power source and charge.
+- Long tool calls: a marker no hook has touched for 30 minutes now stays while Claude Code itself is still working (it keeps its own `caffeinate` running during a turn), for up to `MAX_QUIET_HOURS` (4).
 - Install and uninstall straight from GitHub: `curl -fsSL https://raw.githubusercontent.com/ivaruf/claude-coffee/main/install.sh | sh`. Without a clone, the installer downloads `claude-coffee.sh` from the same branch. Both scripts run only once they're fully downloaded.
 - Heat guard: with the lid closed, serious thermal pressure or a battery at 45 °C (`HOT_BATTERY_C`) puts the Mac to sleep, even mid-turn, and keeps it there until the lid opens. It leaves a notification saying why. `HEAT_GUARD=0` turns it off.
 - `status` shows the battery temperature, the thermal state and the heat guard.
@@ -17,6 +19,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- `curl … | sh` decides that it was piped from `$0` alone, so a `claude-coffee.sh` in the current folder can't be installed instead of the download.
 - If a turn started during the one-second wait before `pmset sleepnow`, the Mac could be put to sleep mid-turn. The hook now checks again right before sleeping.
 - `uninstall.sh` stopped before restoring sleep when `settings.json` was invalid JSON, and never checked whether sleep was actually restored. It now removes the script before restoring sleep, checks the result, finishes the remaining steps, and exits 1 listing what is left.
 - The shellcheck findings that turned CI red.
