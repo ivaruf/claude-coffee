@@ -25,7 +25,7 @@
 
 ---
 
-Close the lid mid-task and macOS puts the Mac to sleep, freezing Claude's work. **claude-coffee keeps the Mac awake, lid closed included, exactly while a Claude Code session is working, and lets it sleep the moment the last one finishes.**
+Close the lid mid-task and macOS puts the Mac to sleep, freezing Claude's work. **claude-coffee keeps the Mac awake, lid closed included, exactly while a Claude Code session is working, and lets it sleep the moment the last one finishes.** The rest of the time your Mac sleeps as usual, so you keep the battery life Apple silicon is known for.
 
 ## Quick start
 
@@ -77,6 +77,7 @@ macOS then reports that *claude-coffee.sh can run in the background*: that's the
 
 - **Lid closed, on battery, many sessions**: awake while any Claude Code session is mid-turn
 - **Sleeps when done**: no toggle or timer; a lid closed mid-turn sleeps a second after the last turn ends
+- **Easy on the battery**: awake only while Claude works, no app or daemon, just a check once a minute, and a battery guard at 20%
 - **Long jobs**: a long tool call or a busy background build keeps the Mac up, for up to 4 hours; an idle dev server doesn't
 - **Remote mode**: logged in over SSH, say from your phone, the Mac also stays up between turns
 - **Heat and battery guards**: too hot with the lid closed, or low on battery, and it sleeps anyway
