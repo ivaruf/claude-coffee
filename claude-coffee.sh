@@ -31,6 +31,8 @@ mkdir -p "$D"
 #   lid_closed    exit 0 if the lid is closed, whatever that means for sleep
 #   sleep_now     puts the machine to sleep, for when the OS won't by itself after "hold 0" with the
 #                 lid already closed (macOS won't; logind will, so on Linux it does nothing)
+#   RELEASE_SLEEPS 1 if the OS sleeps a closed machine by itself once the hold ends (logind): then the
+#                 shared logic skips its wait-and-sleep_now step. Default 0
 #   heat          sets thermal (0-3: nominal, fair, serious, critical) and battery (°C); empty = unknown.
 #                 Hooks call it only with the lid closed and work going on
 #   power         sets onbatt (1 on battery, else 0) and charge (%, empty without a battery). Hooks call
@@ -83,7 +85,7 @@ Linux)
   # call counts as work. Our own lock's systemd-inhibit runs under the systemd user manager, not under
   # Claude Code, so it never counts. Should it hold one all session, an interrupted turn's marker lasts
   # MAX_QUIET_HOURS instead of STALE_MINUTES: bounded either way.
-  OWN_KEEPAWAKE=systemd-inhibit
+  OWN_KEEPAWAKE=systemd-inhibit RELEASE_SLEEPS=1
   # A logind inhibitor lock, held by a transient user unit because the hook exits at once. Lid close
   # needs handle-lid-switch: a sleep lock alone doesn't stop it (LidSwitchIgnoreInhibited=yes). polkit
   # grants that to a local desktop user without a password, but not to an SSH login alone
@@ -268,7 +270,7 @@ elif [ "$want" = 1 ] && [ "$HEAT_GUARD" = 1 ] && [ "$1" != status ]; then
   if [ "${thermal:-0}" -ge 2 ] || [ "${battery:-0}" -ge "$HOT_BATTERY_C" ]; then
     hot=1
     echo "$(date '+%Y-%m-%d %H:%M'), thermal state ${thermal:-?}, battery ${battery:-?} °C" >"$H"
-    notify "Your $MACHINE got hot with the lid closed, so it went to sleep. Open the lid to carry on."
+    notify "Your $MACHINE got hot with the lid closed, so claude-coffee stopped keeping it awake. Open the lid to carry on."
   fi
 fi
 [ "$hot" = 1 ] && want=0
@@ -334,7 +336,7 @@ fi
 # macOS decides on lid sleep only when the lid closes. If it closed while sleep was disabled,
 # re-enabling sleep leaves the Mac awake, so sleep now. Skipped when an external display keeps a
 # closed Mac running (AppleClamshellCausesSleep = No).
-if [ "$want" = 0 ] && [ "$have" = 1 ] && [ "$lid" = 2 ]; then
+if [ "${RELEASE_SLEEPS:-0}" = 0 ] && [ "$want" = 0 ] && [ "$have" = 1 ] && [ "$lid" = 2 ]; then
   sleep 1
   # Unless a guard tripped: a turn may have started during that second (a marker, or another hook's
   # disablesleep 1). Then stay up
