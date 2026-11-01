@@ -25,7 +25,9 @@ mkdir -p "$D"
 # Platform layer: everything OS-specific is in these functions, and the logic below only calls them.
 #   held          prints 1 while sleep is switched off by us, else 0. Hooks call it every time: keep it
 #                 fast (no PowerShell: a state file, a quick systemctl, pmset -g)
-#   hold 1|0      switches sleep off (1) or back on (0), lid close included. Only called on a change
+#   hold 1|0      switches sleep off (1) or back on (0), lid close included. Only called on a change.
+#                 It may refresh $lid (the shared variable lid_state filled): Windows reads the lid anew
+#                 when it lets go, since its cached reading can be a minute old
 #   lid_state     prints 2 if the lid is closed and that normally means sleep, 1 if it's closed but
 #                 something keeps the machine up (an external display), 0 if open or there's no lid
 #   lid_closed    exit 0 if the lid is closed, whatever that means for sleep
