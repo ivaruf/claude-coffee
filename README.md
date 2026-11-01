@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/ivaruf/claude-coffee/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/ivaruf/claude-coffee/actions/workflows/ci.yml/badge.svg"></a>
-  <img alt="macOS" src="https://img.shields.io/badge/macOS-Apple%20silicon-111111?logo=apple&logoColor=white">
+  <img alt="macOS, Linux and Windows (beta)" src="https://img.shields.io/badge/macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-beta%20on%20Linux%20%26%20Windows-111111?logo=apple&logoColor=white">
   <img alt="One POSIX shell script" src="https://img.shields.io/badge/POSIX%20sh-one%20script-4EAA25?logo=gnubash&logoColor=white">
   <a href="https://code.claude.com/docs/en/hooks"><img alt="Claude Code hooks" src="https://img.shields.io/badge/Claude%20Code-hooks-D97757"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-blue"></a>
@@ -19,6 +19,7 @@
   <a href="#why-claude-coffee">Why</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#guards">Guards</a> ·
+  <a href="#linux-and-windows-beta">Linux &amp; Windows</a> ·
   <a href="#configuration">Configuration</a> ·
   <a href="docs/verification.md">Field notes</a>
 </p>
@@ -33,7 +34,7 @@ Close the lid mid-task and macOS puts the Mac to sleep, freezing Claude's work. 
 curl -fsSL https://raw.githubusercontent.com/ivaruf/claude-coffee/main/install.sh | sh
 ```
 
-Or read it first: `git clone https://github.com/ivaruf/claude-coffee && cd claude-coffee && ./install.sh`. The installer may ask for your password once. Running sessions pick it up on their next turn, and running it again updates it. To see what it's doing: `~/.claude/hooks/claude-coffee.sh status`.
+On Windows, run it in Git Bash. Or read it first: `git clone https://github.com/ivaruf/claude-coffee && cd claude-coffee && ./install.sh`. On a Mac, the installer may ask for your password once. Running sessions pick it up on their next turn, and running it again updates it. To see what it's doing: `~/.claude/hooks/claude-coffee.sh status`.
 
 <details>
 <summary><b>What the installer changes</b></summary>
@@ -114,6 +115,21 @@ Each rule is there because something needed it. The [field notes](docs/verificat
 
 When a guard trips, claude-coffee stops keeping the Mac awake, even mid-turn. With the lid closed it sleeps right away, and a notification says why. Neither reading needs root, and `status` shows both. Sources are in the [field notes](docs/verification.md#heat-guard).
 
+## Linux and Windows (beta)
+
+The same hooks and guards run on Linux and on Windows, each with its own way of holding the machine awake. Both are tested in CI against faked system commands, but neither has run on real hardware yet, so [reports are welcome](https://github.com/ivaruf/claude-coffee/issues/new/choose).
+
+| | Keeps it awake with | Checks every minute with | Needs |
+|---|---|---|---|
+| macOS | `pmset disablesleep`, through a two-command sudo rule | a launch agent | `jq` |
+| Linux | a logind lock on sleep and the lid switch, held by a small user service; no root | a systemd user timer | systemd, `jq`, a local desktop session |
+| Windows | the power plan's lid action and sleep timeout, set to "do nothing" and "never" while Claude works, then put back; no admin | a scheduled task | Git for Windows (Claude Code's Git Bash), `jq` |
+
+- **Linux:** KDE Plasma (and Xfce, if set to) handles the lid itself, so lid-closed mode doesn't work there; the installer warns. From an SSH login alone, polkit refuses the lid lock. When the lock goes with the lid closed, logind puts the computer to sleep by itself.
+- **Windows:** the plan change is machine-wide while it lasts, and Group Policy can block it (the installer warns). Reading the lid takes PowerShell, so the hooks use the minute check's readings and only ask again when a turn ends. Heat readings are thin on most laptops. WSL isn't supported yet.
+
+The [field notes](docs/verification.md#linux) list what each backend relies on and what's still unverified.
+
 ## Remote mode
 
 Driving Claude Code from your phone over SSH? While you're logged in, the Mac also stays up between turns, so it doesn't fall asleep while you type the next prompt. It lapses after an hour without activity.
@@ -176,7 +192,7 @@ claude-coffee
 - A permission prompt left unanswered for more than 30 minutes counts as finished.
 - After Esc, the Mac may stay up for about 31 minutes. That assumes Claude Code stops its `caffeinate` on Esc, which is untested.
 - Neither guard has met a real bag or a real 20% yet. A fanless MacBook Air working hard with the lid closed may trip the heat guard on a desk.
-- Tested with the CLI on macOS 26, Apple silicon. Editors that load `~/.claude/settings.json`, Intel Macs and older macOS versions should work; [reports welcome](https://github.com/ivaruf/claude-coffee/issues/new/choose).
+- Tested with the CLI on macOS 26, Apple silicon. Editors that load `~/.claude/settings.json`, Intel Macs and older macOS versions should work; [reports welcome](https://github.com/ivaruf/claude-coffee/issues/new/choose). Linux and Windows haven't run on real hardware yet: see [Linux and Windows](#linux-and-windows-beta).
 
 ## Uninstall
 

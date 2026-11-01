@@ -105,6 +105,45 @@ Measured on 2026-11-01, same Mac. The question: how to tell a long tool call or 
 
 So a marker no hook has touched for 30 minutes is kept, for up to 4 hours, while some process under a Claude Code session is its `caffeinate`, uses 10% CPU or more, or started in the last 2 minutes. An idle dev server or a `sleep` does none of that. Only the launch agent's check measures, because it runs outside Claude Code; a hook would count itself as a young process. Hooks use the check's verdict if it's from the last 2 minutes. Without the launch agent, the plain 30-minute rule applies. Parts of this depend on undocumented Claude Code behavior, and the fallback in every case is the plain 30-minute rule.
 
+## Linux
+
+Researched on 2026-11-01 from systemd, polkit and kernel sources and docs; built and tested against faked commands only. Nothing here has run on real Linux hardware yet.
+
+| What it relies on | Source |
+|---|---|
+| A lid-closed laptop stays up only with a `handle-lid-switch` lock: a plain sleep lock doesn't stop lid suspend, because `LidSwitchIgnoreInhibited=yes` by default | [logind.conf(5)](https://www.freedesktop.org/software/systemd/man/latest/logind.conf.html), [inhibitor locks](https://systemd.io/INHIBITOR_LOCKS/) |
+| polkit grants `inhibit-handle-lid-switch` to an active or inactive local session without a password, but not to any other (an SSH login alone) | [org.freedesktop.login1.policy](https://github.com/systemd/systemd/blob/main/src/login/org.freedesktop.login1.policy) |
+| The lock is an open file descriptor, so a long-lived process must hold it: a transient user unit (`systemd-run --user --unit=claude-coffee-awake systemd-inhibit … sleep infinity`) | systemd-inhibit(1), systemd-run(1) |
+| When the last lock goes with the lid closed, logind re-checks the lid and suspends by itself (not when docked, with `HandleLidSwitch=ignore`, or within 30 s of boot or resume). So claude-coffee never suspends explicitly: that would put the computer back to sleep when the lid next opens | [logind-button.c](https://github.com/systemd/systemd/blob/main/src/login/logind-button.c) |
+| KDE Plasma's PowerDevil (and Xfce's power manager, if set to) handles the lid itself, ignoring other programs' lid locks | [KDE bug 485623](https://bugs.kde.org/show_bug.cgi?id=485623) |
+| procps' `%cpu` is a lifetime average, so the check keeps a snapshot of each process's CPU time and reports the use since the last check | ps(1) |
+| Claude Code runs no keep-awake helper on Linux (2.1.316) | [#96679](https://github.com/anthropics/claude-code/issues/96679) |
+
+**Unverified:**
+- that polkit grants the lid lock to a process in a user unit, which belongs to no session (it should fall back to the user's desktop session; old polkit 0.105 is the risk);
+- that logind sleeps a closed laptop the moment the lock goes;
+- that GNOME doesn't still auto-suspend an idle machine with the lid open;
+- the `busctl` output formats, the thermal trip-point rule on real laptops, and `notify-send` reaching the desktop from the timer.
+
+## Windows
+
+Researched on 2026-11-01 from Microsoft Learn and Claude Code's docs and issues; built and tested against faked commands only. Nothing here has run on real Windows hardware, and the PowerShell/C# half hasn't been syntax-checked.
+
+| What it relies on | Source |
+|---|---|
+| `SetThreadExecutionState` and power requests don't stop lid-close sleep; the power plan's lid close action does | [SetThreadExecutionState](https://learn.microsoft.com/windows/win32/api/winbase/nf-winbase-setthreadexecutionstate), [lid action](https://learn.microsoft.com/windows-hardware/customize/power-settings/power-button-and-lid-settings-lid-switch-close-action) |
+| You may change your own plan without admin, unless Group Policy or MDM sets it | [administrator overrides](https://learn.microsoft.com/windows/win32/power/administrator-overrides) |
+| With "do nothing", Windows' protection against waking in a bag (input suppression) is off while held | [input suppression](https://learn.microsoft.com/windows-hardware/customize/power-settings/power-controls-enableinputsuppression) |
+| There's no API for the lid's state other than a power-setting notification that reports it on registration | [PowerSettingRegisterNotification](https://learn.microsoft.com/windows/win32/api/powersetting/nf-powersetting-powersettingregisternotification) |
+| Hooks run in Git Bash, or in PowerShell without it, where a failing hook blocks the tool call: hence the absolute, quote-free hook command | Claude Code's [hooks](https://code.claude.com/docs/en/hooks) and [setup](https://code.claude.com/docs/en/setup) docs |
+| Claude Code runs no keep-awake helper on Windows | [#96679](https://github.com/anthropics/claude-code/issues/96679) |
+
+**Unverified:**
+- that Windows doesn't sleep by itself when the lid action goes back to sleep with the lid already closed (assumed, so claude-coffee sleeps it);
+- that "do nothing" plus "never sleep" keeps a closed Modern Standby laptop running, and that turning the display off puts it into standby;
+- the lid callback's timing and data offset, `conhost --headless`, the scheduled task repeating forever, and the toast;
+- that thermal-zone throttling counters move at all on most laptops.
+
 ## Ideas that didn't survive
 
 The design started in a phone chat with Claude. Some first drafts were replaced once they met the details:

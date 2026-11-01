@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Linux (beta): a logind lock on sleep, idle and the lid switch, held by a transient user unit, with no root; a systemd user timer for the minute check; lid from logind, power and heat from sysfs. Not yet run on real hardware.
+- Windows in Git Bash (beta): the power plan's lid action and sleep timeout, set to "do nothing" and "never" while Claude works and put back afterwards, with no admin; a scheduled task for the minute check; lid, power, heat and processes through PowerShell, cached for the hooks. Not yet run on real hardware.
+- Tests for every backend run on any machine (each fixture fakes its system's commands and `uname`), and CI runs them on macOS, Ubuntu and Windows.
 - Battery guard: on battery at 20% or less (`LOW_BATTERY`), claude-coffee stops keeping the Mac awake, even mid-turn, and with the lid closed the Mac sleeps right away. It leaves one notification, and plugging in clears it. `status` shows the power source and charge.
 - Long jobs: a marker no hook has touched for 30 minutes now stays, for up to `MAX_QUIET_HOURS` (4), while Claude Code is still at work. That means its own `caffeinate` is running (a long tool call), or processes it started use CPU or start new ones (a background build). An idle dev server doesn't count.
 - Install and uninstall straight from GitHub: `curl -fsSL https://raw.githubusercontent.com/ivaruf/claude-coffee/main/install.sh | sh`. Without a clone, the installer downloads `claude-coffee.sh` from the same branch. Both scripts run only once they're fully downloaded.
