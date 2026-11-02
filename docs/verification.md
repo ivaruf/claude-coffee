@@ -48,6 +48,21 @@ On 2026-10-31, `pmset -g` printed no `SleepDisabled` line when the value was 0. 
 | SSH login detection | A login shows up as root's `sshd-session: you [priv]` and your own `sshd-session: you@ttys025`. Only the second has an `@`. With no markers, against a live login: recent hook event → awake; 60 minutes without one and a login over an hour old → sleep allowed. |
 | The SSH pattern also matches older OpenSSH | `pgrep -f '^sshd(-session)?: [^ ]+@'` matches both `sshd-session: me@ttys998` and `sshd: me@ttys999` and skips `sshd-session: me [priv]`, checked with fake process titles. Not tested against a real pre-9.8 `sshd`. |
 
+## A night of real use (2026-11-01)
+
+With the hook as it is on `main`, on AC. Sources: `pmset -g log` and the session's transcript. Times are local.
+
+| Time | What happened |
+|---|---|
+| 19:50–20:04 | Lid closed while background research agents worked. No sleep entry in the power log. |
+| 20:04:32 → 20:04:37 | The turn ended. 5 s later the Mac slept: `Software Sleep`, the hook's `pmset sleepnow`. |
+| 20:30:34–20:41:20 | The next prompt; the display went off 6 s later. 11 minutes of edits and test runs, no sleep entry. |
+| 20:41:20 → 20:41:25 | The turn ended. 4.5 s later the Mac slept, the same way. |
+| 20:57–06:11 | Six more sleeps, which macOS can't enter while `disablesleep` is 1. The dark wakes between them lasted up to 1 h 48 min, as on earlier nights on AC (3 h 14 min on 2026-10-28). |
+| 21:36 | Claude Code compacted the idle conversation during one of those dark wakes. claude-coffee has no hook on compaction, and the Mac went back to sleep at 22:03 as usual. |
+
+The lid itself isn't in the power log while sleep is off, so "closed" is inferred: each time the display went off within seconds, and the hook only runs `sleepnow` when it reads the lid as closed.
+
 ## Heat guard
 
 ### Official limits
