@@ -60,7 +60,7 @@ macOS then reports that *claude-coffee.sh can run in the background*: that's the
 `caffeinate` lets the Mac sleep again, but not with the lid closed. Amphetamine keeps a closed Mac awake, but until you turn it off. **With claude-coffee you can close the lid, *and* your Mac still gets to sleep.**
 
 <p align="center">
-  <img src="docs/assets/compare.svg" alt="Timeline of closing the lid mid-task. caffeinate: the Mac sleeps when the lid closes and Claude stops mid-task. Amphetamine: awake through the lid closing and long after Claude is done, until you turn it off. claude-coffee: awake through the lid closing, asleep a second after Claude finishes." width="100%">
+  <img src="docs/assets/compare.svg" alt="Timeline of closing the lid mid-task. caffeinate: the Mac sleeps when the lid closes and Claude stops mid-task. Amphetamine: awake through the lid closing and long after Claude is done, until you turn it off. claude-coffee: awake through the lid closing, asleep a few seconds after Claude finishes." width="100%">
 </p>
 
 <p align="center">
@@ -69,13 +69,13 @@ macOS then reports that *claude-coffee.sh can run in the background*: that's the
 </p>
 
 <p align="center">
-  <img src="docs/assets/compare-table.svg" alt="How claude-coffee compares. caffeinate, which Claude Code already runs: you can't close the lid mid-task; it sleeps again by itself; it knows when Claude is working. Amphetamine in closed-display mode: you can close the lid; it sleeps again only when you end it, or on a timer; it doesn't know when Claude is working. sudo pmset -a disablesleep 1 by hand: you can close the lid; it sleeps again only when you remember; it doesn't know. claude-coffee: you can close the lid; it sleeps again a second after the last turn; it knows when Claude is working." width="100%">
+  <img src="docs/assets/compare-table.svg" alt="How claude-coffee compares. caffeinate, which Claude Code already runs: you can't close the lid mid-task; it sleeps again by itself; it knows when Claude is working. Amphetamine in closed-display mode: you can close the lid; it sleeps again only when you end it, or on a timer; it doesn't know when Claude is working. sudo pmset -a disablesleep 1 by hand: you can close the lid; it sleeps again only when you remember; it doesn't know. claude-coffee: you can close the lid; it sleeps again a few seconds after the last turn; it knows when Claude is working." width="100%">
 </p>
 
 ## Features
 
 - **Lid closed, on battery, many sessions**: awake while any Claude Code session is mid-turn
-- **Sleeps when done**: no toggle or timer; a lid closed mid-turn sleeps a second after the last turn ends
+- **Sleeps when done**: no toggle or timer; a lid closed mid-turn sleeps a few seconds after the last turn ends
 - **Easy on the battery**: awake only while Claude works, no app or daemon, just a check once a minute, and a battery guard at 20%
 - **Long jobs**: a long tool call or a busy background build keeps the Mac up, for up to 4 hours; an idle dev server doesn't
 - **Remote mode**: logged in over SSH, say from your phone, the Mac also stays up between turns
@@ -93,7 +93,7 @@ macOS then reports that *claude-coffee.sh can run in the background*: that's the
 
 1. Hooks keep one marker file per busy session. `UserPromptSubmit` and `PreToolUse` create it; `Stop`, `StopFailure` and `SessionEnd` remove it, unless background tasks are still running.
 2. Any marker means `pmset -a disablesleep 1`, the one switch that holds with the lid closed. No marker means `0`.
-3. macOS decides on lid sleep only when the lid closes. So if it closed mid-turn, `pmset sleepnow` follows a second after the last turn ends.
+3. macOS decides on lid sleep only when the lid closes. So if it closed mid-turn, `pmset sleepnow` follows a few seconds after the last turn ends.
 4. Esc never fires `Stop`, so a marker that no hook has touched for 30 minutes expires. It stays, for up to 4 hours, while Claude Code is visibly still at work: its own `caffeinate` is running (a long tool call), or processes it started are using CPU or starting new ones (a background build). An idle dev server shows neither.
 5. The [guards](#guards) override everything above.
 

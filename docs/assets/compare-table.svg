@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 384" width="960" height="384" role="img" aria-labelledby="title desc">
   <title id="title">How claude-coffee compares</title>
-  <desc id="desc">caffeinate, which Claude Code already runs: you can't close the lid mid-task; it sleeps again by itself; it knows when Claude is working. Amphetamine in closed-display mode: you can close the lid; it sleeps again only when you end it, or on a timer; it doesn't know when Claude is working. sudo pmset -a disablesleep 1 by hand: you can close the lid; it sleeps again only when you remember; it doesn't know. claude-coffee: you can close the lid; it sleeps again a second after the last turn; it knows when Claude is working.</desc>
+  <desc id="desc">caffeinate, which Claude Code already runs: you can't close the lid mid-task; it sleeps again by itself; it knows when Claude is working. Amphetamine in closed-display mode: you can close the lid; it sleeps again only when you end it, or on a timer; it doesn't know when Claude is working. sudo pmset -a disablesleep 1 by hand: you can close the lid; it sleeps again only when you remember; it doesn't know. claude-coffee: you can close the lid; it sleeps again a few seconds after the last turn; it knows when Claude is working.</desc>
   <style>
     .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
@@ -64,6 +64,6 @@
   <text x="36" y="345" class="sans sub">this project</text>
   <use href="#yes" x="321" y="329"/>
   <use href="#yes" x="491" y="329"/>
-  <text x="512" y="334" class="sans yes">a second after the last turn</text>
+  <text x="512" y="334" class="sans yes">a few seconds after the last turn</text>
   <use href="#yes" x="781" y="329"/>
 </svg>
