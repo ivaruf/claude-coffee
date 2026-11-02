@@ -1,10 +1,11 @@
 <p align="center">
-  <img src="docs/assets/banner.svg" alt="claude-coffee: your Mac stays awake while Claude is brewing" width="100%">
+  <img src="docs/assets/banner.svg" alt="claude-coffee: your machine stays awake while Claude is brewing" width="100%">
 </p>
 
 <p align="center">
   <a href="https://github.com/ivaruf/claude-coffee/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/ivaruf/claude-coffee/actions/workflows/ci.yml/badge.svg"></a>
-  <img alt="macOS, Linux and Windows (beta)" src="https://img.shields.io/badge/macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-beta%20on%20Linux%20%26%20Windows-111111?logo=apple&logoColor=white">
+  <img alt="macOS supported" src="https://img.shields.io/badge/macOS-supported-brightgreen?logo=apple&logoColor=white">
+  <img alt="Linux and Windows: beta" src="https://img.shields.io/badge/Linux%20%C2%B7%20Windows-beta-dfb317?logo=linux&logoColor=white">
   <img alt="One POSIX shell script" src="https://img.shields.io/badge/POSIX%20sh-one%20script-4EAA25?logo=gnubash&logoColor=white">
   <a href="https://code.claude.com/docs/en/hooks"><img alt="Claude Code hooks" src="https://img.shields.io/badge/Claude%20Code-hooks-D97757"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-blue"></a>
