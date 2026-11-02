@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <b>Close the lid. Claude keeps working. The Mac sleeps the moment it's done.</b>
+  <b>Close the lid. Claude keeps working. Your machine sleeps the moment it's done.</b>
 </p>
 
 <p align="center">
@@ -27,7 +27,7 @@
 
 ---
 
-Close the lid mid-task and macOS puts the Mac to sleep, freezing Claude's work. **claude-coffee keeps the Mac awake, lid closed included, exactly while a Claude Code session is working, and lets it sleep the moment the last one finishes.** The rest of the time your Mac sleeps as usual, so you keep the battery life Apple silicon is known for.
+Close the lid mid-task and your laptop goes to sleep, freezing Claude's work. **claude-coffee keeps it awake, lid closed included, exactly while a Claude Code session is working, and lets it sleep the moment the last one finishes.** The rest of the time it sleeps as usual, so you keep your battery life.
 
 ## Quick start
 
@@ -44,8 +44,10 @@ On Windows, run it in Git Bash. Or read it first: `git clone https://github.com/
 |---|---|
 | The hook script | `~/.claude/hooks/claude-coffee.sh` |
 | Five hook groups next to your own (a backup is kept) | `~/.claude/settings.json` |
-| Passwordless `pmset -a disablesleep 0` and `1`, checked with `visudo` | `/etc/sudoers.d/claude-coffee` |
-| A launch agent that re-checks every minute, and at login | `~/Library/LaunchAgents/com.github.ivaruf.claude-coffee.plist` |
+| macOS: passwordless `pmset -a disablesleep 0` and `1`, checked with `visudo` | `/etc/sudoers.d/claude-coffee` |
+| macOS: a launch agent that re-checks every minute, and at login | `~/Library/LaunchAgents/com.github.ivaruf.claude-coffee.plist` |
+| Linux: a systemd user timer that re-checks every minute | `~/.config/systemd/user/claude-coffee.timer` and `.service` |
+| Windows: a scheduled task that re-checks every minute while you're logged on | Task Scheduler: `claude-coffee` |
 
 macOS then reports that *claude-coffee.sh can run in the background*: that's the launch agent. Requires `jq`, built into recent macOS (otherwise `brew install jq`).
 
@@ -57,7 +59,7 @@ macOS then reports that *claude-coffee.sh can run in the background*: that's the
 
 ## Why claude-coffee
 
-`caffeinate` lets the Mac sleep again, but not with the lid closed. Amphetamine keeps a closed Mac awake, but until you turn it off. **With claude-coffee you can close the lid, *and* your Mac still gets to sleep.**
+On a Mac, `caffeinate` lets it sleep again, but not with the lid closed. Amphetamine keeps a closed Mac awake, but until you turn it off. **With claude-coffee you can close the lid, *and* your machine still gets to sleep.**
 
 <p align="center">
   <img src="docs/assets/compare.svg" alt="Timeline of closing the lid mid-task. caffeinate: the Mac sleeps when the lid closes and Claude stops mid-task. Amphetamine: awake through the lid closing and long after Claude is done, until you turn it off. claude-coffee: awake through the lid closing, asleep a few seconds after Claude finishes." width="100%">
@@ -77,11 +79,11 @@ macOS then reports that *claude-coffee.sh can run in the background*: that's the
 - **Lid closed, on battery, many sessions**: awake while any Claude Code session is mid-turn
 - **Sleeps when done**: no toggle or timer; a lid closed mid-turn sleeps a few seconds after the last turn ends
 - **Easy on the battery**: awake only while Claude works, no app or daemon, just a check once a minute, and a battery guard at 20%
-- **Long jobs**: a long tool call or a busy background build keeps the Mac up, for up to 4 hours; an idle dev server doesn't
-- **Remote mode**: logged in over SSH, say from your phone, the Mac also stays up between turns
+- **Long jobs**: a long tool call or a busy background build keeps the machine up, for up to 4 hours; an idle dev server doesn't
+- **Remote mode**: logged in over SSH, say from your phone, the machine also stays up between turns
 - **Heat and battery guards**: too hot with the lid closed, or low on battery, and it sleeps anyway
-- **Can't get stuck awake**: markers expire, and a launch agent re-checks every minute
-- **Least privilege**: sudo may run exactly two commands; without that rule the Mac just sleeps as usual
+- **Can't get stuck awake**: markers expire, and a check runs every minute
+- **Least privilege**: no root or admin on Linux and Windows; on macOS, sudo may run exactly two commands, and without that rule the Mac just sleeps as usual
 - **Silent**: the hooks print nothing, so nothing reaches Claude's context
 - **Tested**: CI runs the hook and the installer against fakes, never your real settings
 
@@ -92,7 +94,7 @@ macOS then reports that *claude-coffee.sh can run in the background*: that's the
 </p>
 
 1. Hooks keep one marker file per busy session. `UserPromptSubmit` and `PreToolUse` create it; `Stop`, `StopFailure` and `SessionEnd` remove it, unless background tasks are still running.
-2. Any marker means `pmset -a disablesleep 1`, the one switch that holds with the lid closed. No marker means `0`.
+2. On macOS, any marker means `pmset -a disablesleep 1`, the one switch that holds with the lid closed. No marker means `0`. Linux and Windows have [their own switches](#linux-and-windows-beta).
 3. macOS decides on lid sleep only when the lid closes. So if it closed mid-turn, `pmset sleepnow` follows a few seconds after the last turn ends.
 4. Esc never fires `Stop`, so a marker that no hook has touched for 30 minutes expires. It stays, for up to 4 hours, while Claude Code is visibly still at work: its own `caffeinate` is running (a long tool call), or processes it started are using CPU or starting new ones (a background build). An idle dev server shows neither.
 5. The [guards](#guards) override everything above.
@@ -111,7 +113,7 @@ Each rule is there because something needed it. The [field notes](docs/verificat
 | Heat | The lid is closed and macOS's thermal state is *serious*, or the battery reaches 45 °C | *Serious* means fans at full speed; it's where Apple tells apps to cut back. 45 °C is the top of lithium-ion's charging range and Apple's highest storage temperature | You open the lid |
 | Battery | On battery at 20% or less | macOS starts warning at about 10%, and while sleep is switched off it refuses its own low-battery sleep | You plug in |
 
-While sleep is switched off, macOS also turns down its own low-battery and overheating sleep, so these guards stand in for them. When a guard trips, claude-coffee stops keeping the Mac awake, even mid-turn. With the lid closed it sleeps right away, and a notification says why. Neither reading needs root, and `status` shows both. Sources are in the [field notes](docs/verification.md#heat-guard).
+While sleep is switched off, macOS also turns down its own low-battery and overheating sleep, so these guards stand in for them. When a guard trips, claude-coffee stops keeping the machine awake, even mid-turn. With the lid closed it sleeps right away, and a notification says why. Neither reading needs root, and `status` shows both. Sources are in the [field notes](docs/verification.md#heat-guard).
 
 ## Linux and Windows (beta)
 
@@ -130,13 +132,13 @@ The [field notes](docs/verification.md#linux) list what each backend relies on a
 
 ## Remote mode
 
-Driving Claude Code from your phone over SSH? While you're logged in, the Mac also stays up between turns, so it doesn't fall asleep while you type the next prompt. It lapses after an hour without activity.
+Driving Claude Code from your phone over SSH? While you're logged in, the machine also stays up between turns, so it doesn't fall asleep while you type the next prompt. It lapses after an hour without activity.
 
 <details>
 <summary>Tips for a phone setup</summary>
 
 - Run `claude` inside `tmux` or `screen` (built into macOS), so the session survives a dropped connection. Reattach with `screen -dr`.
-- The Mac has to be awake when you connect. Remote mode keeps it up; it doesn't wake it.
+- The machine has to be awake when you connect. Remote mode keeps it up; it doesn't wake it.
 - Use key login: put your phone's public key in `~/.ssh/authorized_keys` and turn off password login.
 
 </details>
@@ -152,7 +154,7 @@ REMOTE=1           # 0 turns remote mode off
 REMOTE_MINUTES=60  # how long remote mode lasts after the last activity
 HEAT_GUARD=1       # 0 turns the heat guard off
 HOT_BATTERY_C=45   # with the lid closed, a battery this hot (°C) means sleep
-LOW_BATTERY=20     # on battery at this charge (%) or less, stop keeping the Mac awake; 0 turns it off
+LOW_BATTERY=20     # on battery at this charge (%) or less, stop keeping the machine awake; 0 turns it off
 ```
 
 ## Troubleshooting
@@ -173,9 +175,9 @@ claude-coffee
   launch agent   ok                         # "missing": run the installer again
 ```
 
-- **The Mac slept while Claude was working?** Both last lines should say `ok`, and neither guard should say `tripped`.
-- **The Mac won't sleep?** `busy sessions` and `remote mode` show what's holding it. A session interrupted with Esc lets go within about 30 minutes.
-- **Still puzzled?** The kernel logs every sleep decision:
+- **Your machine slept while Claude was working?** Both last lines should say `ok`, and neither guard should say `tripped`.
+- **Your machine won't sleep?** `busy sessions` and `remote mode` show what's holding it. A session interrupted with Esc lets go within about 30 minutes.
+- **Still puzzled, on a Mac?** The kernel logs every sleep decision:
 
   ```sh
   log show --last 1h --style compact --predicate 'process == "kernel" AND eventMessage CONTAINS "PMRD"' \
@@ -188,9 +190,9 @@ claude-coffee
 
 - Background work that looks idle, such as waiting on a download or a remote job, counts as finished after 30 minutes, just like an idle dev server. For a job like that, have Claude wait for it within the turn.
 - A permission prompt left unanswered counts as finished after 30 minutes. If Claude Code keeps its `caffeinate` running while it waits (untested), that becomes up to 4 hours.
-- If the Mac restarts mid-turn, sleep stays switched off until you log in; the check then lets go right away.
-- After a guard puts the Mac to sleep mid-turn, Claude Code may retry its request during macOS's brief maintenance wakes, which uses quota ([reported for another tool](https://dev.to/dawonlee/lid-closed-claude-code-still-running-how-macos-darkwakes-burn-your-weekly-limit-overnight-217i)).
-- After Esc, the Mac may stay up for about 31 minutes. That assumes Claude Code stops its `caffeinate` on Esc, which is untested.
+- If a Mac restarts mid-turn, sleep stays switched off until you log in; the check then lets go right away.
+- After a guard puts a Mac to sleep mid-turn, Claude Code may retry its request during macOS's brief maintenance wakes, which uses quota ([reported for another tool](https://dev.to/dawonlee/lid-closed-claude-code-still-running-how-macos-darkwakes-burn-your-weekly-limit-overnight-217i)).
+- After Esc, the machine may stay up for about 31 minutes. That assumes Claude Code stops its `caffeinate` on Esc, which is untested.
 - Neither guard has met a real bag or a real 20% yet. A fanless MacBook Air working hard with the lid closed may trip the heat guard on a desk.
 - Tested with the CLI on macOS 26, Apple silicon. Editors that load `~/.claude/settings.json`, Intel Macs and older macOS versions should work; [reports welcome](https://github.com/ivaruf/claude-coffee/issues/new/choose). Linux and Windows haven't run on real hardware yet: see [Linux and Windows](#linux-and-windows-beta).
 
