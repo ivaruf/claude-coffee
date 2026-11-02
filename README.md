@@ -66,12 +66,9 @@ macOS then reports that *claude-coffee.sh can run in the background*: that's the
   <img src="docs/assets/asleep.svg" alt="Done, fast asleep: Claude sleeps on the still-closed MacBook next to an empty mug, and the Mac is asleep." width="49%">
 </p>
 
-| | Close the lid mid-task | Sleeps again by itself | Knows when Claude is working |
-|---|:---:|:---:|:---:|
-| `caffeinate` (Claude Code already runs it) | ✗ | ✓ | ✓ |
-| Amphetamine, closed-display mode | ✓ | ✗ when you end it, or on a timer | ✗ |
-| `sudo pmset -a disablesleep 1` by hand | ✓ | ✗ when you remember | ✗ |
-| **claude-coffee** | ✓ | ✓ a second after the last turn | ✓ |
+<p align="center">
+  <img src="docs/assets/compare-table.svg" alt="How claude-coffee compares. caffeinate, which Claude Code already runs: you can't close the lid mid-task; it sleeps again by itself; it knows when Claude is working. Amphetamine in closed-display mode: you can close the lid; it sleeps again only when you end it, or on a timer; it doesn't know when Claude is working. sudo pmset -a disablesleep 1 by hand: you can close the lid; it sleeps again only when you remember; it doesn't know. claude-coffee: you can close the lid; it sleeps again a second after the last turn; it knows when Claude is working." width="100%">
+</p>
 
 ## Features
 
