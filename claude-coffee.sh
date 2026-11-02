@@ -46,6 +46,7 @@ mkdir -p "$D"
 #   ssh_logins    prints the PIDs of the user's SSH logins, exit 1 if none; login_ages PIDS: their etimes
 #   can_hold      exit 0 if hold works without a password (for status, labelled HOLD_LABEL)
 #   agent_loaded  exit 0 if the every-minute check is installed (for status, labelled AGENT_LABEL)
+#   boot_id       prints something that changes with every restart, or nothing if there's no such thing
 #   OWN_KEEPAWAKE the helper Claude Code itself runs during a turn (macOS: caffeinate), or empty
 #   MACHINE       what to call the computer in notifications
 case $(uname -s) in
@@ -56,7 +57,15 @@ Darwin)
   hold() { sudo -n /usr/bin/pmset -a disablesleep "$1" >/dev/null; }
   lid_state() { ioreg -r -k AppleClamshellState -d 1 | grep -cE '"AppleClamshell(State|CausesSleep)" = Yes'; }
   lid_closed() { ioreg -r -k AppleClamshellState -d 1 | grep -q '"AppleClamshellState" = Yes'; }
-  sleep_now() { pmset sleepnow >/dev/null 2>&1; }
+  # pmset -g shows the saved setting; the kernel's own flag (IOPMrootDomain's SleepDisabled) follows
+  # once powerd applies it, and sleepnow is refused until then. So wait for that, up to 5 s
+  sleep_now() {
+    dw_n=0
+    while [ "$dw_n" -lt 10 ] && ioreg -r -n IOPMrootDomain -d 1 | grep -q '"SleepDisabled" = Yes'; do
+      sleep 0.5; dw_n=$((dw_n + 1))
+    done
+    pmset sleepnow >/dev/null 2>&1
+  }
   # Thermal state and battery °C; neither needs root. The battery's "Temperature" is in 0.1 K (see
   # docs/verification.md); "VirtualTemperature" is a model
   heat() {
@@ -77,6 +86,7 @@ Darwin)
   # -k: with cached credentials "sudo -n" passes for any admin; only a NOPASSWD rule should count
   can_hold() { sudo -k -n -l | grep -qE 'NOPASSWD: (ALL$|.*/usr/bin/pmset -a disablesleep 1)'; }
   agent_loaded() { launchctl print "gui/$(id -u)/com.github.ivaruf.claude-coffee"; }
+  boot_id() { sysctl -n kern.bootsessionuuid 2>/dev/null; }
   ;;
 Linux)
   ROOT=${CLAUDE_COFFEE_ROOT:-}   # empty: the real /sys and /proc. The tests point it at a fake tree
@@ -92,11 +102,15 @@ Linux)
   # needs handle-lid-switch: a sleep lock alone doesn't stop it (LidSwitchIgnoreInhibited=yes). polkit
   # grants that to a local desktop user without a password, but not to an SSH login alone
   held() { if systemctl --user is-active --quiet claude-coffee-awake 2>/dev/null; then echo 1; else echo 0; fi; }
+  # GNOME's automatic suspend of an idle machine asks gnome-session, not logind, and before systemd 257
+  # logind let a user's own Suspend() past that user's locks. So inside the lock, a GNOME suspend
+  # inhibit too, where there is one; anywhere else this is just "sleep infinity"
+  LX_GNOME='gnome-session-inhibit --inhibit suspend --reason "Claude Code is working" sleep infinity 2>/dev/null || exec sleep infinity'
   hold() {
     if [ "$1" = 1 ]; then
       systemd-run --user --quiet --collect --unit=claude-coffee-awake \
         systemd-inhibit --what=sleep:idle:handle-lid-switch --mode=block --who=claude-coffee \
-        --why='Claude Code is working' sleep infinity </dev/null >/dev/null 2>&1
+        --why='Claude Code is working' sh -c "$LX_GNOME" </dev/null >/dev/null 2>&1
     else
       systemctl --user stop claude-coffee-awake >/dev/null 2>&1
     fi
@@ -187,6 +201,7 @@ Linux)
     systemd-inhibit --what=sleep:idle:handle-lid-switch --mode=block --who=claude-coffee --why='status check' true </dev/null
   }
   agent_loaded() { systemctl --user is-active --quiet claude-coffee.timer; }
+  boot_id() { cat "$ROOT/proc/sys/kernel/random/boot_id" 2>/dev/null; }
   ;;
 MINGW*|MSYS*|CYGWIN*)   # Windows, in Git Bash
   MACHINE=PC OWN_KEEPAWAKE='' HOLD_LABEL='power plan' AGENT_LABEL='scheduled task'
@@ -303,6 +318,9 @@ MINGW*|MSYS*|CYGWIN*)   # Windows, in Git Bash
     [ -n "$(win_scheme)" ]
   }
   agent_loaded() { win_noconv schtasks /query /tn claude-coffee >/dev/null 2>&1; }
+  # None that's cheap and exact (PowerShell's LastBootUpTime costs a hook half a second). The power
+  # plan keeps its change across a restart; markers from before one run out after STALE_MINUTES
+  boot_id() { :; }
 
   # The PowerShell half lives in this file too (the one file the installer downloads). It's written out
   # when it differs and run with -File, a script PowerShell can be asked to run with -ExecutionPolicy Bypass
@@ -506,6 +524,14 @@ case $1 in
   check|status) ;;
   *) echo "usage: ${0##*/} on|off|check|status" >&2; exit 1 ;;   # not 2: that would block a PreToolUse
 esac
+
+# A restart ends every session, but not every hold: macOS keeps disablesleep across one (see
+# docs/verification.md). So markers from before it go, and the check lets go as soon as you log in.
+# Not on the first run after an install or update: those markers are live
+if [ "$1" != status ] && b_id=$(boot_id) && [ -n "$b_id" ]; then
+  if [ ! -e "$C/boot" ]; then echo "$b_id" >"$C/boot"
+  elif [ "$(cat "$C/boot")" != "$b_id" ]; then rm -f "$D"/* "$C/working"; echo "$b_id" >"$C/boot"; fi
+fi
 
 # printf, not echo: macOS sh's echo expands the \n inside the JSON and jq then rejects it
 sid=$(printf '%s\n' "${json:-}" | jq -r '.session_id // empty' 2>/dev/null | tr -cd 'A-Za-z0-9_-')

@@ -44,7 +44,7 @@ On Windows, run it in Git Bash. Or read it first: `git clone https://github.com/
 | The hook script | `~/.claude/hooks/claude-coffee.sh` |
 | Five hook groups next to your own (a backup is kept) | `~/.claude/settings.json` |
 | Passwordless `pmset -a disablesleep 0` and `1`, checked with `visudo` | `/etc/sudoers.d/claude-coffee` |
-| A launch agent that re-checks every minute | `~/Library/LaunchAgents/com.github.ivaruf.claude-coffee.plist` |
+| A launch agent that re-checks every minute, and at login | `~/Library/LaunchAgents/com.github.ivaruf.claude-coffee.plist` |
 
 macOS then reports that *claude-coffee.sh can run in the background*: that's the launch agent. Requires `jq`, built into recent macOS (otherwise `brew install jq`).
 
@@ -111,9 +111,9 @@ Each rule is there because something needed it. The [field notes](docs/verificat
 | Guard | Trips when | Why that limit | Clears when |
 |---|---|---|---|
 | Heat | The lid is closed and macOS's thermal state is *serious*, or the battery reaches 45 °C | *Serious* means fans at full speed; it's where Apple tells apps to cut back. 45 °C is the top of lithium-ion's charging range and Apple's highest storage temperature | You open the lid |
-| Battery | On battery at 20% or less | macOS starts warning at about 10%, and with sleep switched off it may not get to sleep by itself | You plug in |
+| Battery | On battery at 20% or less | macOS starts warning at about 10%, and while sleep is switched off it refuses its own low-battery sleep | You plug in |
 
-When a guard trips, claude-coffee stops keeping the Mac awake, even mid-turn. With the lid closed it sleeps right away, and a notification says why. Neither reading needs root, and `status` shows both. Sources are in the [field notes](docs/verification.md#heat-guard).
+While sleep is switched off, macOS also turns down its own low-battery and overheating sleep, so these guards stand in for them. When a guard trips, claude-coffee stops keeping the Mac awake, even mid-turn. With the lid closed it sleeps right away, and a notification says why. Neither reading needs root, and `status` shows both. Sources are in the [field notes](docs/verification.md#heat-guard).
 
 ## Linux and Windows (beta)
 
@@ -125,8 +125,8 @@ The same hooks and guards run on Linux and on Windows, each with its own way of 
 | Linux | a logind lock on sleep and the lid switch, held by a small user service; no root | a systemd user timer | systemd, `jq`, a local desktop session |
 | Windows | the power plan's lid action and sleep timeout, set to "do nothing" and "never" while Claude works, then put back; no admin | a scheduled task | Git for Windows (Claude Code's Git Bash), `jq` |
 
-- **Linux:** KDE Plasma (and Xfce, if set to) handles the lid itself, so lid-closed mode doesn't work there; the installer warns. From an SSH login alone, polkit refuses the lid lock. When the lock goes with the lid closed, logind puts the computer to sleep by itself.
-- **Windows:** the plan change is machine-wide while it lasts, and Group Policy can block it (the installer warns). Reading the lid takes PowerShell, so the hooks use the minute check's readings and only ask again when a turn ends. Heat readings are thin on most laptops. WSL isn't supported yet.
+- **Linux:** KDE Plasma and Xfce handle the lid themselves, so lid-closed mode doesn't work there; the installer warns. From an SSH login alone, polkit refuses the lid lock. When the lock goes with the lid closed, logind puts the computer to sleep by itself. On GNOME the lock also holds off GNOME's own automatic suspend. With systemd 257 or later, suspending by hand waits until Claude is done, as on macOS.
+- **Windows:** the plan change is machine-wide while it lasts, and Group Policy can block it (the installer warns). After a restart mid-turn, the plan is put back within 30 minutes of logging in. Reading the lid takes PowerShell, so the hooks use the minute check's readings and only ask again when a turn ends. Heat readings are thin on most laptops. WSL isn't supported yet.
 
 The [field notes](docs/verification.md#linux) list what each backend relies on and what's still unverified.
 
@@ -189,7 +189,9 @@ claude-coffee
 ## Known limits
 
 - Background work that looks idle, such as waiting on a download or a remote job, counts as finished after 30 minutes, just like an idle dev server. For a job like that, have Claude wait for it within the turn.
-- A permission prompt left unanswered for more than 30 minutes counts as finished.
+- A permission prompt left unanswered counts as finished after 30 minutes. If Claude Code keeps its `caffeinate` running while it waits (untested), that becomes up to 4 hours.
+- If the Mac restarts mid-turn, sleep stays switched off until you log in; the check then lets go right away.
+- After a guard puts the Mac to sleep mid-turn, Claude Code may retry its request during macOS's brief maintenance wakes, which uses quota ([reported for another tool](https://dev.to/dawonlee/lid-closed-claude-code-still-running-how-macos-darkwakes-burn-your-weekly-limit-overnight-217i)).
 - After Esc, the Mac may stay up for about 31 minutes. That assumes Claude Code stops its `caffeinate` on Esc, which is untested.
 - Neither guard has met a real bag or a real 20% yet. A fanless MacBook Air working hard with the lid closed may trip the heat guard on a desk.
 - Tested with the CLI on macOS 26, Apple silicon. Editors that load `~/.claude/settings.json`, Intel Macs and older macOS versions should work; [reports welcome](https://github.com/ivaruf/claude-coffee/issues/new/choose). Linux and Windows haven't run on real hardware yet: see [Linux and Windows](#linux-and-windows-beta).

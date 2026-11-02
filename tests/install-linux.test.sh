@@ -63,7 +63,7 @@ if printf '%s\n' "$out" | grep -q 'handled by'; then exit 1; fi; t    # logind h
 fx_sync; : >"$T/log"; cmd=$(jq -r '.hooks.UserPromptSubmit[-1].hooks[0].command' "$S")
 printf '{"session_id":"S1"}' | fake sh -c "$cmd"
 [ -e "$T/.claude/coffee/busy/S1" ]; [ "$(cat "$T/state")" = 1 ]; t   # the hook command really runs, and holds
-grep -qx 'systemd-run --user --quiet --collect --unit=claude-coffee-awake systemd-inhibit --what=sleep:idle:handle-lid-switch --mode=block --who=claude-coffee --why=Claude Code is working sleep infinity' "$T/log"; t
+grep -qxF 'systemd-run --user --quiet --collect --unit=claude-coffee-awake systemd-inhibit --what=sleep:idle:handle-lid-switch --mode=block --who=claude-coffee --why=Claude Code is working sh -c gnome-session-inhibit --inhibit suspend --reason "Claude Code is working" sleep infinity 2>/dev/null || exec sleep infinity' "$T/log"; t
 
 run install.sh
 [ "$(ours)" = 5 ]; t                                                  # re-running doesn't duplicate

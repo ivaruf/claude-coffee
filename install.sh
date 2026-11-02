@@ -64,6 +64,7 @@ darwin_install() {
     <string>check</string>
   </array>
   <key>StartInterval</key><integer>60</integer>
+  <key>RunAtLoad</key><true/>
 </dict>
 </plist>
 EOF

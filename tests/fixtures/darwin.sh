@@ -21,6 +21,12 @@ EOF
 
 cat >"$T/bin/ioreg" <<EOF
 #!/bin/sh
+# The kernel's own SleepDisabled follows pmset's setting, but \$T/klag holds it at Yes for that many reads
+case "\$*" in *IOPMrootDomain*)
+  if [ "\$(cat $T/klag 2>/dev/null || echo 0)" -gt 0 ]; then echo \$((\$(cat $T/klag) - 1)) >$T/klag; k=Yes
+  elif [ "\$(cat $T/state)" = 1 ]; then k=Yes; else k=No; fi
+  echo "      \"SleepDisabled\" = \$k"; exit 0 ;;
+esac
 if [ "\$(cat $T/lid)" = closed ]; then l=Yes; else l=No; fi
 echo "      \"AppleClamshellState\" = \$l"
 echo "      \"AppleClamshellCausesSleep\" = Yes"
@@ -48,4 +54,9 @@ cat >"$T/bin/launchctl" <<EOF
 #!/bin/sh
 [ "\$1" = print ] && { [ -e $T/agent ]; exit; }
 exit 0
+EOF
+
+cat >"$T/bin/sysctl" <<EOF
+#!/bin/sh
+[ "\$*" = "-n kern.bootsessionuuid" ] && cat $T/boot 2>/dev/null
 EOF

@@ -12,6 +12,7 @@
 #   ptable    the process table: pid ppid etime %cpu args, %cpu being recent use
 #   notified  every notification's text, one per line
 #   canhold   present when keeping awake needs no password; agent: present when the check is installed
+#   boot      the system's boot ID (absent: none); a different one means it restarted
 # A fixture sets UNAME (what uname -s prints), HOLD_LABEL and AGENT_LABEL (status lines), and
 # RELEASE_SLEEPS: 1 if the system sleeps by itself when the hold ends with the lid closed (logind),
 # 0 if claude-coffee has to (macOS); its fakes then touch $T/slept on release or on "sleep now".
@@ -80,6 +81,8 @@ if [ "$RELEASE_SLEEPS" = 0 ]; then  # claude-coffee sleeps it explicitly, which 
     rm "$T/slept"; touch "$T/noline"; hook on F >/dev/null
     [ "$(hook off F)" = 0 ]; [ -e "$T/slept" ]; t   # ... also when pmset shows no SleepDisabled line for 0
     rm "$T/noline"
+    rm -f "$T/slept"; hook on F >/dev/null; echo 3 >"$T/klag"
+    [ "$(hook off F)" = 0 ]; [ -e "$T/slept" ]; [ "$(cat "$T/klag")" = 0 ]; t   # ... once the kernel's own flag lets go
   fi
   rm -f "$T/slept"; hook on F >/dev/null
   echo "touch $T/.claude/coffee/busy/F2" >"$T/during-sleep"
@@ -158,6 +161,13 @@ echo battery >"$T/src"; echo 5 >"$T/pct"; echo 'LOW_BATTERY=0' >"$T/.claude/coff
 [ "$(hook on V)" = 1 ]; t           # guard switched off in config
 rm "$T/.claude/coffee/config"; echo ac >"$T/src"; echo 100 >"$T/pct"
 [ "$(hook off V)" = 0 ]
+if [ "$FX" != windows ]; then       # Windows has no cheap boot ID
+  echo boot-1 >"$T/boot"; [ "$(hook on X1)" = 1 ]; [ -e "$T/.claude/coffee/busy/X1" ]; t   # first run with one: live markers stay
+  echo boot-2 >"$T/boot"; echo 1 >"$T/state"   # restarted mid-turn; macOS keeps disablesleep
+  [ "$(chk)" = 0 ]; [ ! -e "$T/.claude/coffee/busy/X1" ]; t   # that session is gone: its fresh marker too
+  [ "$(hook on X2)" = 1 ]; [ "$(hook off X2)" = 0 ]; t         # turns after the restart as usual
+  rm "$T/boot"
+fi
 [ "$(hook on '../../x')" = 1 ]
 [ -e "$T/.claude/coffee/busy/x" ]; t   # path characters stripped from the session id
 out=$(run status)

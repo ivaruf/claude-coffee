@@ -62,6 +62,7 @@ run install.sh
 if grep -q '^curl' "$T/log"; then exit 1; fi; t                       # a clone installs its own copy: no download
 if command -v plutil >/dev/null; then plutil -lint "$P" >/dev/null; else grep -q '<key>Label</key>' "$P"; fi; t
 grep -q "<string>$T/.claude/hooks/claude-coffee.sh</string>" "$P"; t  # absolute path: launchd has no shell
+grep -q '<key>RunAtLoad</key><true/>' "$P"; t                    # also at login: lets go after a restart mid-turn
 # the rule goes in, unless this Mac already has the real one
 grep -q '^sudo install -m 0440 -o root -g wheel .* /etc/sudoers.d/claude-coffee$' "$T/log" || [ -e /etc/sudoers.d/claude-coffee ]; t
 cmd=$(jq -r '.hooks.UserPromptSubmit[-1].hooks[0].command' "$S")

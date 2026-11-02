@@ -96,6 +96,10 @@ fx_sync() {
       a = $0; sub(/^[ \t]*[^ \t]+[ \t]+[^ \t]+[ \t]+[^ \t]+[ \t]+[^ \t]+[ \t]+/, "", a)
       printf "%6d %6d %11s %11s %5.1f %s\n", $1, $2, $3, hms(used), life, a > ps }' "$T/ptable"
 
+  # /proc's boot ID, from the boot knob
+  mkdir -p "$T/root/proc/sys/kernel/random"
+  if [ -e "$T/boot" ]; then cp "$T/boot" "$T/root/proc/sys/kernel/random/boot_id"; else rm -f "$T/root/proc/sys/kernel/random/boot_id"; fi
+
   # /sys: a charger, the battery, a mouse's battery, and three thermal zones
   read -r fx_src <"$T/src"; read -r fx_pct <"$T/pct"; read -r fx_c <"$T/batt_c"; read -r fx_th <"$T/thermal"
   fx_p=$T/root/sys/class/power_supply; fx_z=$T/root/sys/class/thermal

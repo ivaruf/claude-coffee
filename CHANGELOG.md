@@ -17,6 +17,9 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
+- After a restart, markers from before it are dropped (macOS keeps `disablesleep` across a restart), and the launch agent also runs at login, so a Mac restarted mid-turn gets its sleep back as soon as you log in. Windows has no cheap boot ID; there those markers expire after 30 minutes.
+- Before `pmset sleepnow`, the hook waits (up to 5 s) for the kernel's own `SleepDisabled` flag to clear, rather than a fixed second: `pmset -g` shows the saved setting, and the kernel refuses to sleep until powerd has applied it.
+- Linux on GNOME: the lock also runs `gnome-session-inhibit --inhibit suspend`, since GNOME's automatic suspend asks gnome-session, and before systemd 257 got past a user's own logind locks. Without GNOME it falls back to a plain wait.
 - The launch agent checks every minute instead of every 5, so the heat guard notices long jobs. `install.sh` reloads an agent installed by an older version.
 - When idle, the check no longer re-applies `disablesleep 0` (a `sudo` call) every time.
 
