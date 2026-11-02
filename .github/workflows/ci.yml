@@ -18,9 +18,18 @@ jobs:
       - run: shellcheck --version && make lint
 
   test:
-    name: tests (macOS)
-    runs-on: macos-latest
+    # Every backend runs on every runner (fixtures fake each system's commands), so this also proves the
+    # scripts work with BSD tools (macOS), GNU tools and dash (Ubuntu) and Git Bash (Windows)
+    name: tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v7
-      - run: sw_vers && jq --version
-      - run: make test
+      - run: uname -a && jq --version && command -v sh awk find ps
+      - run: sh tests/run.sh

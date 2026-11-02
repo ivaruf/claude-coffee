@@ -16,7 +16,7 @@ macOS `/bin/sh` has `echo` expand escape sequences. The `Stop` hook input includ
 
 The kernel logged `System sleep prevented by kPMUserDisabledAllSleep` when the lid closed and never looked again when the value went back to 0. So a lid closed mid-turn left the Mac awake after the turn, indefinitely.
 
-**Fix:** when the last session finishes, the lid is closed and closing the lid normally causes sleep, wait a second and run `pmset sleepnow`. Verified: `sleep reason Software Sleep`, requested by `pmset`, 1.1 s after re-enabling. `pmset sleepnow` works without root.
+**Fix:** when the last session finishes, the lid is closed and closing the lid normally causes sleep, wait a second and run `pmset sleepnow`. Verified: `sleep reason Software Sleep`, requested by `pmset`, 1.1 s after re-enabling. `pmset sleepnow` works without root. The source agrees: turning sleep back on only clears a flag, with no new look at the lid (`kPowerEventUserDisabledSleep` in [IOPMrootDomain.cpp](https://github.com/apple-oss-distributions/xnu/blob/main/iokit/Kernel/IOPMrootDomain.cpp)). Since 2026-11-01 it also waits, up to 5 s, for the kernel's own flag to clear first (see below).
 
 ### 3. `pmset -g` doesn't always leave the line out
 
@@ -36,6 +36,8 @@ On 2026-10-31, `pmset -g` printed no `SleepDisabled` line when the value was 0. 
 | Hook output stays out of Claude's context | The script prints nothing to stdout, and a test fails if it does. The docs say stderr on exit 0 is never shown to Claude. |
 | Running sessions pick up a hook edit | Yes. The marker appeared in the running session right after the edit. |
 | `pmset disablesleep` exists on macOS 26 | Yes. It's in the `pmset` binary but missing from `man pmset`. |
+| `pmset -g` shows the kernel's state | **No**, the saved setting. The kernel's flag is `SleepDisabled` on `IOPMrootDomain` in `ioreg`, set once powerd applies the setting, and `pmset sleepnow` is refused while it's on ([pmset.m](https://github.com/apple-oss-distributions/PowerManagement/blob/main/pmset/pmset.m), [IOPMrootDomain.cpp](https://github.com/apple-oss-distributions/xnu/blob/main/iokit/Kernel/IOPMrootDomain.cpp)). So before `sleepnow`, claude-coffee waits for that flag rather than a fixed second. |
+| `disablesleep` lasts across a restart | Yes, per the source: `pmset` writes it to `/Library/Preferences/com.apple.PowerManagement.plist`, and powerd applies it again when it starts ([pmset.m](https://github.com/apple-oss-distributions/PowerManagement/blob/main/pmset/pmset.m), [PMSettings.m](https://github.com/apple-oss-distributions/PowerManagement/blob/main/pmconfigd/PMSettings.m)). Not tested by restarting. So markers from before a restart are dropped (`kern.bootsessionuuid` changes with every boot), and the launch agent also runs at login. Before login nothing runs, so a Mac restarted mid-turn stays up at the login window. |
 | `pmset -g` shows `SleepDisabled` | ` SleepDisabled		1` when the value is 1. For 0 it showed no line on 2026-10-31 and ` SleepDisabled		0` on 2026-11-01 (bug 3). The script reads the value and treats a missing line as 0. |
 | The launch agent can use passwordless sudo | Yes. Reset to 0 by hand, ran `launchctl kickstart`, and it was back to `Yes` within 2 s with exit code 0. |
 | `jq` under launchd | `/usr/bin/jq` is on launchd's default `PATH`. `check` mode doesn't read stdin, so it returns in 0.1 s even with stdin left open. |
@@ -98,7 +100,7 @@ Measured on 2026-11-01, same Mac, on battery.
 | Question | Result |
 |---|---|
 | Is there an official low-battery threshold? | No. Apple publishes none. macOS shows "Low Battery: Your Mac will sleep soon unless plugged into a power outlet" at about 10% ([Apple Community](https://discussions.apple.com/thread/255561785)). |
-| Does `disablesleep 1` keep macOS from its own low-battery sleep? | Not tested, deliberately: that means running the battery flat. The guard doesn't rely on either answer, and it steps in at 20%, well before that point. |
+| Does `disablesleep 1` keep macOS from its own low-battery sleep? | Yes, per the source: while sleep is disabled the kernel refuses every sleep, low-battery and overheating sleep included (`checkSystemSleepAllowed` in [IOPMrootDomain.cpp](https://github.com/apple-oss-distributions/xnu/blob/main/iokit/Kernel/IOPMrootDomain.cpp)). Some arm64 configurations ask for a shutdown instead. Not tested, deliberately: that means running the battery flat. So the guard is what stands in, at 20%. A [hardware report](https://github.com/vorssaint/vorssaint-utils/issues/1729) for another tool shows the same: with the lid closed and sleep turned back on at 20%, the Mac never slept and drained. |
 | Reading the charge without root | `pmset -g batt` prints `Now drawing from 'AC Power'` or `'Battery Power'`, then a line with the charge, such as `100%; finishing charge`. Desktop Macs have no battery line, so the guard never trips there. |
 | Not tested yet | A real discharge to 20%. The tests fake `pmset -g batt`. |
 
@@ -120,6 +122,64 @@ Measured on 2026-11-01, same Mac. The question: how to tell a long tool call or 
 
 So a marker no hook has touched for 30 minutes is kept, for up to 4 hours, while some process under a Claude Code session is its `caffeinate`, uses 10% CPU or more, or started in the last 2 minutes. An idle dev server or a `sleep` does none of that. Only the launch agent's check measures, because it runs outside Claude Code; a hook would count itself as a young process. Hooks use the check's verdict if it's from the last 2 minutes. Without the launch agent, the plain 30-minute rule applies. Parts of this depend on undocumented Claude Code behavior, and the fallback in every case is the plain 30-minute rule.
 
+## Linux
+
+Researched on 2026-11-01 from systemd, polkit and kernel sources and docs; built and tested against faked commands only. Nothing here has run on real Linux hardware yet.
+
+| What it relies on | Source |
+|---|---|
+| A lid-closed laptop stays up only with a `handle-lid-switch` lock: a plain sleep lock doesn't stop lid suspend, because `LidSwitchIgnoreInhibited=yes` by default | [logind.conf(5)](https://www.freedesktop.org/software/systemd/man/latest/logind.conf.html), [inhibitor locks](https://systemd.io/INHIBITOR_LOCKS/) |
+| polkit grants `inhibit-handle-lid-switch` to an active or inactive local session without a password, but not to any other (an SSH login alone) | [org.freedesktop.login1.policy](https://github.com/systemd/systemd/blob/main/src/login/org.freedesktop.login1.policy) |
+| The lock is an open file descriptor, so a long-lived process must hold it: a transient user unit (`systemd-run --user --unit=claude-coffee-awake systemd-inhibit … sleep infinity`) | systemd-inhibit(1), systemd-run(1) |
+| When the last lock goes with the lid closed, logind re-checks the lid and suspends by itself (not when docked, with `HandleLidSwitch=ignore`, or within 30 s of boot or resume). So claude-coffee never suspends explicitly: that would put the computer back to sleep when the lid next opens | [logind-button.c](https://github.com/systemd/systemd/blob/main/src/login/logind-button.c) |
+| KDE Plasma's PowerDevil, and Xfce's power manager by default, handle the lid themselves, ignoring other programs' lid locks. KDE does that on purpose, against laptops overheating in bags | [KDE bugs 485623](https://bugs.kde.org/show_bug.cgi?id=485623) and [457859](https://bugs.kde.org/show_bug.cgi?id=457859), [xfpm-manager.c](https://gitlab.xfce.org/xfce/xfce4-power-manager/-/blob/master/src/xfpm-manager.c) |
+| GNOME's automatic suspend of an idle machine asks gnome-session's inhibitors, not logind's, and before systemd 257 logind let a user's own `Suspend()` past that user's block locks. So inside the lock, `gnome-session-inhibit --inhibit suspend` runs too, where it works; elsewhere it falls back to a plain wait | [gsd-power-manager.c](https://gitlab.gnome.org/GNOME/gnome-settings-daemon/-/blob/master/plugins/power/gsd-power-manager.c), [systemd NEWS](https://github.com/systemd/systemd/blob/main/NEWS) (v257: "logind now always obeys block inhibitor locks") |
+| Since systemd 257 the lock also refuses your own `systemctl suspend` while held, as `disablesleep` does on macOS | [logind-shutdown.c](https://github.com/systemd/systemd/blob/main/src/login/logind-shutdown.c) |
+| UPower's critical-battery action skips inhibitors, so it still works while the lock is held | [up-backend.c](https://gitlab.freedesktop.org/upower/upower/-/blob/master/src/linux/up-backend.c) |
+| procps' `%cpu` is a lifetime average, so the check keeps a snapshot of each process's CPU time and reports the use since the last check | ps(1) |
+| Claude Code runs no keep-awake helper on Linux (2.1.316) | [#96679](https://github.com/anthropics/claude-code/issues/96679) |
+
+**Unverified:**
+- that polkit grants the lid lock to a process in a user unit, which belongs to no session (it should fall back to the user's desktop session; old polkit 0.105 is the risk);
+- that logind sleeps a closed laptop the moment the lock goes (the source says so);
+- that the GNOME inhibit stops GNOME's idle suspend on systemd 256 and older (Ubuntu 24.04 has 255);
+- the `busctl` output formats, the thermal trip-point rule on real laptops, and `notify-send` reaching the desktop from the timer.
+
+## Windows
+
+Researched on 2026-11-01 from Microsoft Learn and Claude Code's docs and issues; built and tested against faked commands only. Nothing here has run on real Windows hardware, and the PowerShell/C# half hasn't been syntax-checked.
+
+| What it relies on | Source |
+|---|---|
+| `SetThreadExecutionState` and power requests don't stop lid-close sleep; the power plan's lid close action does | [SetThreadExecutionState](https://learn.microsoft.com/windows/win32/api/winbase/nf-winbase-setthreadexecutionstate), [lid action](https://learn.microsoft.com/windows-hardware/customize/power-settings/power-button-and-lid-settings-lid-switch-close-action) |
+| You may change your own plan without admin, unless Group Policy or MDM sets it | [administrator overrides](https://learn.microsoft.com/windows/win32/power/administrator-overrides) |
+| With "do nothing", Windows' protection against waking in a bag (input suppression) is off while held | [input suppression](https://learn.microsoft.com/windows-hardware/customize/power-settings/power-controls-enableinputsuppression) |
+| There's no API for the lid's state other than a power-setting notification that reports it on registration | [PowerSettingRegisterNotification](https://learn.microsoft.com/windows/win32/api/powersetting/nf-powersetting-powersettingregisternotification) |
+| Hooks run in Git Bash, or in PowerShell without it, where a failing hook blocks the tool call: hence the absolute, quote-free hook command | Claude Code's [hooks](https://code.claude.com/docs/en/hooks) and [setup](https://code.claude.com/docs/en/setup) docs |
+| Claude Code runs no keep-awake helper on Windows | [#96679](https://github.com/anthropics/claude-code/issues/96679) |
+| The same design was proposed for PowerToys Awake and closed unmerged. Review found that it restored into whichever plan was active, wrote "do nothing" into a plan switched to meanwhile, and only recovered from a crash on relaunch. claude-coffee restores into the plan it saved, never writes into another, and the every-minute check puts things back after a crash | [PowerToys #46408](https://github.com/microsoft/PowerToys/pull/46408), [#34479](https://github.com/microsoft/PowerToys/issues/34479) |
+| The plan keeps its change across a restart. There's no cheap boot ID, so markers from before one expire after 30 minutes | — |
+
+**Unverified:**
+- that Windows doesn't sleep by itself when the lid action goes back to sleep with the lid already closed (assumed, so claude-coffee sleeps it);
+- that "do nothing" plus "never sleep" keeps a closed Modern Standby laptop running, and that turning the display off puts it into standby;
+- the lid callback's timing and data offset, `conhost --headless`, the scheduled task repeating forever, and the toast;
+- that thermal-zone throttling counters move at all on most laptops.
+
+## Other tools
+
+Checked on 2026-11-01 from their source where it's public. Every tool found that keeps a Mac awake with the lid closed on battery, reliably, switches sleep off with `pmset disablesleep` behind root, as claude-coffee does.
+
+| Tool | Lid closed on battery | With | Guards |
+|---|---|---|---|
+| [Claude Clamshell](https://github.com/mrexodia/claude-clamshell) | No | `caffeinate -s`, which works on AC power only | — |
+| [claude-keep-awake](https://github.com/AxGord/claude-keep-awake) | Yes, reportedly | a private clamshell switch, no root (see below) | — |
+| [keep-awake-agents](https://github.com/emielmadonna/keep-awake-agents) | Opt-in | `pmset disablesleep` through a sudoers rule | battery 15%, 8 hours |
+| [Adrafinil](https://github.com/kageroumado/adrafinil) | Yes | `pmset disablesleep` through a root helper | 80 °C, battery 20% |
+| [Nemuri](https://github.com/syfssb/nemuri) | Yes | `pmset disablesleep` through a root helper; restores it at boot | battery 20% |
+| [Lidnight](https://lidnight.app/en/security/) | Yes | `pmset disablesleep` through a root helper; restores it at boot | 45 °C, a battery floor |
+| [Amphetamine Power Protect](https://github.com/x74353/Amphetamine-Power-Protect) | Yes | the same two-command sudoers rule as claude-coffee | battery level |
+
 ## Ideas that didn't survive
 
 The design started in a phone chat with Claude. Some first drafts were replaced once they met the details:
@@ -127,6 +187,7 @@ The design started in a phone chat with Claude. Some first drafts were replaced 
 - **`disablesleep *` in sudoers** became the two exact commands, because a sudoers wildcard also matches whitespace and would allow any other `pmset` setting to be appended.
 - **`pgrep claude`** as the "is anything running" check. About eight `claude` processes are usually open, so any check based on them keeps the Mac awake forever. The hooks know when a turn is running; process lists don't.
 - **Parsing the hook JSON with `sed`** became `jq`.
+- **A no-root clamshell switch** (`kPMSetClamshellSleepState` on `IOPMrootDomain`, used by Amphetamine Enhancer and claude-keep-awake) needs no sudo, and macOS's own low-battery sleep keeps working with it. But it takes compiled code, powerd resets it after a wake and on power changes on Apple silicon, and [Adrafinil](https://github.com/kageroumado/adrafinil) found it had no effect on macOS 26.3.
 - **Presence signals for remote mode** (a flag file, pinging the phone on home Wi-Fi, `tailscale ping`) were replaced by watching for your own SSH login process, which needs no setup and no network assumptions.
 
 ## Reproduce

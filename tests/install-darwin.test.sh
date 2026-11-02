@@ -1,11 +1,12 @@
 #!/bin/sh
-# Runs install.sh and uninstall.sh in a throwaway $HOME with fake sudo, launchctl, pmset, ioreg, osascript
+# The macOS install: runs install.sh and uninstall.sh in a throwaway $HOME with a fake uname (Darwin),
+# sudo, launchctl, pmset, ioreg, osascript
 # and curl (which serves files from this repo instead of GitHub).
 # Your real settings, sudoers and launch agents are never touched.
 set -eu
 R=$(cd "$(dirname "$0")/.." && pwd)
 T=$(mktemp -d); n=0; rc=0
-trap 'rc=$?; rm -rf "$T"; [ "$rc" = 0 ] || echo "install: check $((n + 1)) failed" >&2' EXIT
+trap 'rc=$?; rm -rf "$T"; [ "$rc" = 0 ] || echo "install (darwin): check $((n + 1)) failed" >&2' EXIT
 mkdir -p "$T/bin" "$T/.claude" "$T/empty"
 cat >"$T/bin/curl" <<EOF
 #!/bin/sh
@@ -28,6 +29,7 @@ exit 0
 EOF
 printf '#!/bin/sh\necho "      \\"AppleClamshellState\\" = No"\n' >"$T/bin/ioreg"
 printf '#!/bin/sh\necho 0\n' >"$T/bin/osascript"
+printf '#!/bin/sh\nexit 1\n' >"$T/bin/pgrep"   # no SSH logins
 cat >"$T/bin/launchctl" <<EOF
 #!/bin/sh
 echo "launchctl \$*" >>$T/log
@@ -37,6 +39,9 @@ case \$1 in
   bootout) rm -f $T/loaded ;;
 esac
 EOF
+printf '#!/bin/sh\necho Darwin\n' >"$T/bin/uname"
+# visudo checks the sudoers rule for real where it exists (macOS); elsewhere it's waved through
+command -v visudo >/dev/null || printf '#!/bin/sh\nexit 0\n' >"$T/bin/visudo"
 chmod +x "$T/bin/"*
 : >"$T/log"; echo 0 >"$T/state"
 S=$T/.claude/settings.json
@@ -55,8 +60,9 @@ run install.sh
 [ "$(jq -r '.hooks.Stop[0].hooks[0].command' "$S")" = '~/other.sh' ]; t  # other hooks kept, still first
 [ -x "$T/.claude/hooks/claude-coffee.sh" ]; t
 if grep -q '^curl' "$T/log"; then exit 1; fi; t                       # a clone installs its own copy: no download
-plutil -lint "$P" >/dev/null; t
+if command -v plutil >/dev/null; then plutil -lint "$P" >/dev/null; else grep -q '<key>Label</key>' "$P"; fi; t
 grep -q "<string>$T/.claude/hooks/claude-coffee.sh</string>" "$P"; t  # absolute path: launchd has no shell
+grep -q '<key>RunAtLoad</key><true/>' "$P"; t                    # also at login: lets go after a restart mid-turn
 # the rule goes in, unless this Mac already has the real one
 grep -q '^sudo install -m 0440 -o root -g wheel .* /etc/sudoers.d/claude-coffee$' "$T/log" || [ -e /etc/sudoers.d/claude-coffee ]; t
 cmd=$(jq -r '.hooks.UserPromptSubmit[-1].hooks[0].command' "$S")
@@ -66,7 +72,7 @@ printf '{"session_id":"S1"}' | HOME=$T PATH="$T/bin:$PATH" sh -c "$cmd"
 run install.sh
 [ "$(ours)" = 5 ]; t                                                  # re-running doesn't duplicate
 [ "$(grep -c bootstrap "$T/log")" = 1 ]; t                            # a loaded, unchanged agent is left alone
-sed -i '' 's|<integer>60</integer>|<integer>300</integer>|' "$P"; run install.sh
+sed 's|<integer>60</integer>|<integer>300</integer>|' "$P" >"$P.old" && mv "$P.old" "$P"; run install.sh
 [ "$(grep -c bootstrap "$T/log")" = 2 ]; grep -q '<integer>60</integer>' "$P"; t  # an older plist is replaced and reloaded
 
 run uninstall.sh
@@ -108,4 +114,4 @@ printf '#!/bin/sh\n# decoy\n' >"$T/empty/claude-coffee.sh"; : >"$T/empty/sh"
 piped install.sh; cmp -s "$T/.claude/hooks/claude-coffee.sh" "$R/claude-coffee.sh"; t  # piped next to a decoy (and a file named sh): still downloads
 rm "$T/empty/claude-coffee.sh" "$T/empty/sh"
 piped uninstall.sh; [ "$(ours)" = 0 ]; [ ! -e "$T/.claude/hooks/claude-coffee.sh" ]; t  # piped uninstall works too
-echo "install: all $n checks passed"
+echo "install (darwin): all $n checks passed"

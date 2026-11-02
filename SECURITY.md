@@ -1,6 +1,8 @@
 # Security
 
-claude-coffee asks for one privilege: a sudoers rule that lets your user run exactly
+On Linux and Windows, claude-coffee asks for no privilege at all: a logind lock (Linux) and your own power plan (Windows) are yours to change.
+
+On macOS it asks for one: a sudoers rule that lets your user run exactly
 
 ```
 /usr/bin/pmset -a disablesleep 0

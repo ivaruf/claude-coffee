@@ -9,7 +9,7 @@ make test   # never touches your real sleep settings, sudoers or launch agents
 make lint   # needs shellcheck: brew install shellcheck
 ```
 
-`tests/hook.test.sh` runs the hook against fake `pmset`, `sudo`, `ioreg`, `pgrep` and `ps`. `tests/install.test.sh` runs the installer and uninstaller in a throwaway `$HOME` with fake `sudo` and `launchctl`.
+`tests/hook.test.sh` holds the hook's scenarios; `tests/fixtures/<os>.sh` fakes one system's commands (and `uname`) for them, so every backend runs on any machine. `tests/install-<os>.test.sh` runs that system's installer and uninstaller in a throwaway `$HOME`. `tests/run.sh` (and `make test`) runs them all.
 
 > [!WARNING]
 > Don't test `install.sh` by running it with a fake `$HOME` alone. It would still use your real `sudo` and `launchctl`. Use `tests/install.test.sh`.
