@@ -104,6 +104,24 @@ Measured on 2026-11-01, same Mac, on battery.
 | Reading the charge without root | `pmset -g batt` prints `Now drawing from 'AC Power'` or `'Battery Power'`, then a line with the charge, such as `100%; finishing charge`. Desktop Macs have no battery line, so the guard never trips there. |
 | Not tested yet | A real discharge to 20%. The tests fake `pmset -g batt`. |
 
+## Power draw
+
+Measured on 2026-11-02, same Mac (16-inch, M4 Pro, 100 Wh battery), on battery.
+
+| Question | Result |
+|---|---|
+| Reading it without root | `ioreg -rn AppleSmartBattery` has `"SystemLoad"` in `PowerTelemetryData`: the whole machine's draw in mW, on battery and on AC. Like the battery's other values it changes about once a minute, so it gives averages over minutes, not second by second. |
+| Voltage × current instead? | `InstantAmperage` is printed as an unsigned 64-bit number, so −609 mA shows as 18446744073709551007. awk's floating point can't take 2^64 off that exactly and gave 25 W, then 0 W. Done exactly with `bc` it was 9.55 W, next to `SystemLoad`'s 8.27 W. `SystemLoad` is simpler. |
+| The battery's mAh left over a run? | Too coarse over minutes: `AppleRawCurrentCapacity` rose by 98 mAh in the middle of the run below. |
+
+| State | Draw |
+|---|---|
+| Lid open, display on, during a turn | 7.4, 13.3 and 8.3 W, read at 12:10–12:12 |
+| Lid closed, kept awake, Claude waiting on one 9-minute tool call | **1.5 W** on average: 1.07, 1.21, 1.53, 1.31, 1.09, 1.07, 1.16, 2.77 and 2.38 W, one reading a minute. The first reading, 4.9 W, dated from before the lid closed and is left out. |
+| Asleep, lid closed | **Under 0.6 W**: from 06:37 to 08:18 the charge stayed at 99%, and from 08:39 to 10:00 at 95% (`pmset -g log`, dark wakes included) |
+
+So a Mac kept awake with the lid closed and nothing to do uses about 12% of this battery over an 8-hour night, against under 5% asleep. Not yet measured: the lid closed while Claude runs builds or tests. Pilot Light's site reports 2.3 W for that on an M5 Max.
+
 ## Long tool calls and background jobs
 
 Measured on 2026-11-01, same Mac. The question: how to tell a long tool call or a background build from a turn interrupted with Esc, or a dev server left running, when none of them fires a hook.
@@ -179,6 +197,7 @@ Checked on 2026-11-01 from their source where it's public. Every tool found that
 | [Nemuri](https://github.com/syfssb/nemuri) | Yes | `pmset disablesleep` through a root helper; restores it at boot | battery 20% |
 | [Lidnight](https://lidnight.app/en/security/) | Yes | `pmset disablesleep` through a root helper; restores it at boot | 45 °C, a battery floor |
 | [Amphetamine Power Protect](https://github.com/x74353/Amphetamine-Power-Protect) | Yes | the same two-command sudoers rule as claude-coffee | battery level |
+| [Pilot Light](https://github.com/CyrisXD/pilot-light) (checked 2026-11-02) | Yes, while its switch is on | `pmset disablesleep` through a sudoers rule, plus Low Power Mode with the lid closed | serious thermal state, battery 15% |
 
 ## Ideas that didn't survive
 
@@ -188,6 +207,7 @@ The design started in a phone chat with Claude. Some first drafts were replaced 
 - **`pgrep claude`** as the "is anything running" check. About eight `claude` processes are usually open, so any check based on them keeps the Mac awake forever. The hooks know when a turn is running; process lists don't.
 - **Parsing the hook JSON with `sed`** became `jq`.
 - **A no-root clamshell switch** (`kPMSetClamshellSleepState` on `IOPMrootDomain`, used by Amphetamine Enhancer and claude-keep-awake) needs no sudo, and macOS's own low-battery sleep keeps working with it. But it takes compiled code, powerd resets it after a wake and on power changes on Apple silicon, and [Adrafinil](https://github.com/kageroumado/adrafinil) found it had no effect on macOS 26.3.
+- **Low Power Mode with the lid closed**, as Pilot Light does. Its site reports 4.8 W with the lid closed and Low Power Mode on, on an M5 Max. Here, without it, this Mac drew [1.5 W](#power-draw) with the lid closed while Claude waited. These are different Macs, but it leaves Low Power Mode little to save. It would also take 18 more `pmset` commands in the sudoers rule, saving and restoring your own setting, and slower builds and tests while Claude works.
 - **Presence signals for remote mode** (a flag file, pinging the phone on home Wi-Fi, `tailscale ping`) were replaced by watching for your own SSH login process, which needs no setup and no network assumptions.
 
 ## Reproduce
@@ -197,6 +217,7 @@ make test                               # fakes only: safe at any time
 ~/.claude/hooks/claude-coffee.sh status # the real thing, read-only
 pmset -g | grep SleepDisabled           # mid-turn "SleepDisabled 1"; idle "SleepDisabled 0" or no line
 ls ~/.claude/coffee/busy                # sessions that are mid-turn right now
+ioreg -rn AppleSmartBattery | grep -oE '"SystemLoad"=[0-9]+'   # the whole machine's draw in mW, refreshed about once a minute
 ```
 
 **Lid test:** start a long turn and close the lid for two minutes. `pmset -g log | grep -E 'Entering Sleep|Wake from' | tail -5` should show no sleep inside that window. Leave the lid shut past the end of the turn, and an `Entering Sleep state due to 'Software Sleep pid=…'` entry follows about a second later.

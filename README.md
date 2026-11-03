@@ -78,7 +78,7 @@ On a Mac, `caffeinate` lets it sleep again, but not with the lid closed. Ampheta
 
 - **Lid closed, on battery, many sessions**: awake while any Claude Code session is mid-turn
 - **Sleeps when done**: no toggle or timer; a lid closed mid-turn sleeps a few seconds after the last turn ends
-- **Easy on the battery**: awake only while Claude works, no app or daemon, just a check once a minute, and a battery guard at 20%
+- **Easy on the battery**: awake only while Claude works (lid closed while it waits: [1.5 W](docs/verification.md#power-draw) on an M4 Pro), no app or daemon, just a check once a minute, and a battery guard at 20%
 - **Long jobs**: a long tool call or a busy background build keeps the machine up, for up to 4 hours; an idle dev server doesn't
 - **Remote mode**: logged in over SSH, say from your phone, the machine also stays up between turns
 - **Heat and battery guards**: too hot with the lid closed, or low on battery, and it sleeps anyway
