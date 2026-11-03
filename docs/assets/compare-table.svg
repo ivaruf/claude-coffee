@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 384" width="960" height="384" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 384" width="1000" height="384" role="img" aria-labelledby="title desc">
   <title id="title">How claude-coffee compares</title>
-  <desc id="desc">caffeinate, which Claude Code already runs: you can't close the lid mid-task; it sleeps again by itself; it knows when Claude is working. Amphetamine in closed-display mode: you can close the lid; it sleeps again only when you end it, or on a timer; it doesn't know when Claude is working. sudo pmset -a disablesleep 1 by hand: you can close the lid; it sleeps again only when you remember; it doesn't know. claude-coffee: you can close the lid; it sleeps again a few seconds after the last turn; it knows when Claude is working.</desc>
+  <desc id="desc">caffeinate, which Claude Code already runs: you can't close the lid mid-task; it sleeps again by itself; it knows when Claude is working; it doesn't carry on after a lost connection. Amphetamine in closed-display mode: you can close the lid; it sleeps again only when you end it, or on a timer; it doesn't know when Claude is working, or carry on after a lost connection. sudo pmset -a disablesleep 1 by hand: you can close the lid; it sleeps again only when you remember; it doesn't know, or carry on. claude-coffee: you can close the lid; it sleeps again a few seconds after the last turn; it knows when Claude is working; it carries on after a lost connection.</desc>
   <style>
     .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
@@ -21,49 +21,55 @@
     </g>
   </defs>
 
-  <rect width="960" height="384" rx="22" fill="#1f140e"/>
+  <rect width="1000" height="384" rx="22" fill="#1f140e"/>
 
-  <!-- columns: names at 36, then 310, 480, 770; every cell's mark sits on its column's left edge -->
+  <!-- columns: names at 36, then 285, 430, 700, 845; every cell's mark sits on its column's left edge -->
   <g class="sans head">
-    <text x="310" y="46">Close the lid</text><text x="310" y="65">mid-task</text>
-    <text x="480" y="46">Sleeps again</text><text x="480" y="65">by itself</text>
-    <text x="770" y="46">Knows when Claude</text><text x="770" y="65">is working</text>
+    <text x="285" y="46">Close the lid</text><text x="285" y="65">mid-task</text>
+    <text x="430" y="46">Sleeps again</text><text x="430" y="65">by itself</text>
+    <text x="700" y="46">Knows when Claude</text><text x="700" y="65">is working</text>
+    <text x="845" y="46">Carries on after</text><text x="845" y="65">a lost connection</text>
   </g>
   <g stroke="#e8d6c4" stroke-width="1">
-    <line x1="36" y1="84" x2="924" y2="84" stroke-opacity=".22"/>
-    <line x1="36" y1="154" x2="924" y2="154" stroke-opacity=".1"/>
-    <line x1="36" y1="224" x2="924" y2="224" stroke-opacity=".1"/>
+    <line x1="36" y1="84" x2="964" y2="84" stroke-opacity=".22"/>
+    <line x1="36" y1="154" x2="964" y2="154" stroke-opacity=".1"/>
+    <line x1="36" y1="224" x2="964" y2="224" stroke-opacity=".1"/>
   </g>
 
   <!-- caffeinate -->
   <text x="36" y="115" class="mono name">caffeinate</text>
   <text x="36" y="135" class="sans sub">Claude Code already runs it</text>
-  <use href="#no" x="321" y="119"/>
-  <use href="#yes" x="491" y="119"/>
-  <use href="#yes" x="781" y="119"/>
+  <use href="#no" x="296" y="119"/>
+  <use href="#yes" x="441" y="119"/>
+  <use href="#yes" x="711" y="119"/>
+  <use href="#no" x="856" y="119"/>
 
   <!-- Amphetamine -->
   <text x="36" y="185" class="sans name">Amphetamine</text>
   <text x="36" y="205" class="sans sub">closed-display mode</text>
-  <use href="#yes" x="321" y="189"/>
-  <use href="#no" x="491" y="189"/>
-  <text x="512" y="194" class="sans no">when you end it, or on a timer</text>
-  <use href="#no" x="781" y="189"/>
+  <use href="#yes" x="296" y="189"/>
+  <use href="#no" x="441" y="189"/>
+  <text x="462" y="194" class="sans no">when you end it, or on a timer</text>
+  <use href="#no" x="711" y="189"/>
+  <use href="#no" x="856" y="189"/>
 
   <!-- by hand -->
   <text x="36" y="255" class="sans name">By hand</text>
   <text x="36" y="275" class="mono sub">sudo pmset -a disablesleep 1</text>
-  <use href="#yes" x="321" y="259"/>
-  <use href="#no" x="491" y="259"/>
-  <text x="512" y="264" class="sans no">when you remember</text>
-  <use href="#no" x="781" y="259"/>
+  <use href="#yes" x="296" y="259"/>
+  <use href="#no" x="441" y="259"/>
+  <text x="462" y="264" class="sans no">when you remember</text>
+  <use href="#no" x="711" y="259"/>
+  <use href="#no" x="856" y="259"/>
 
   <!-- claude-coffee -->
-  <rect x="20" y="298" width="920" height="62" rx="14" fill="#d2704f" fill-opacity=".12" stroke="#d2704f" stroke-opacity=".45" stroke-width="1.5"/>
+  <rect x="20" y="298" width="960" height="62" rx="14" fill="#d2704f" fill-opacity=".12" stroke="#d2704f" stroke-opacity=".45" stroke-width="1.5"/>
   <text x="36" y="325" class="mono name">claude-coffee</text>
   <text x="36" y="345" class="sans sub">this project</text>
-  <use href="#yes" x="321" y="329"/>
-  <use href="#yes" x="491" y="329"/>
-  <text x="512" y="334" class="sans yes">a few seconds after the last turn</text>
-  <use href="#yes" x="781" y="329"/>
+  <use href="#yes" x="296" y="329"/>
+  <use href="#yes" x="441" y="329"/>
+  <text x="462" y="334" class="sans yes">a few seconds after the last turn</text>
+  <use href="#yes" x="711" y="329"/>
+  <use href="#yes" x="856" y="329"/>
+  <text x="877" y="334" class="sans yes">once it's back</text>
 </svg>

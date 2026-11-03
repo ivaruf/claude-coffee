@@ -3,6 +3,8 @@
 # https://github.com/ivaruf/claude-coffee
 #
 # usage: claude-coffee.sh on|off   Claude Code hooks (hook JSON on stdin)
+#        claude-coffee.sh wait     the StopFailure hook that runs in the background: waits for a lost
+#                                  connection to come back, then wakes Claude to carry on
 #        claude-coffee.sh check    the every-minute job (launchd, a systemd timer, Task Scheduler)
 #        claude-coffee.sh status   for you; changes nothing
 
@@ -14,12 +16,16 @@ REMOTE_MINUTES=60   # remote mode lapses this long after the last hook event and
 HEAT_GUARD=1        # 0 = never let heat end a turn early
 HOT_BATTERY_C=45    # with the lid closed, a battery this hot (°C) means sleep, mid-turn or not
 LOW_BATTERY=20      # on battery at this charge (%) or less, stop keeping the Mac awake; 0 = never
+AUTO_CONTINUE=1     # 0 = a turn the internet cut short waits for you to type "continue"
+OFFLINE_MINUTES=60  # how long to stay awake waiting for the internet to come back (at most 239)
+OFFLINE_POLL=20     # seconds between checks while it's gone
 # shellcheck source=/dev/null
 [ -f "$C/config" ] && . "$C/config"
 D=$C/busy   # one marker file per session that is mid-turn
 L=$C/last   # touched on every hook event
 H=$C/hot    # the heat guard tripped; stays until the lid opens
 B=$C/low    # the battery guard tripped; goes when the Mac is plugged in or charged above LOW_BATTERY
+O=$C/offline   # sessions waiting for the internet: <id> (the waiter's PID, since when), <id>.n (tries)
 mkdir -p "$D"
 
 # Platform layer: everything OS-specific is in these functions, and the logic below only calls them.
@@ -520,9 +526,9 @@ PS1
 esac
 
 case $1 in
-  on|off) json=$(cat); touch "$L" ;;
+  on|off|wait) json=$(cat); touch "$L" ;;
   check|status) ;;
-  *) echo "usage: ${0##*/} on|off|check|status" >&2; exit 1 ;;   # not 2: that would block a PreToolUse
+  *) echo "usage: ${0##*/} on|off|wait|check|status" >&2; exit 1 ;;   # not 2: that would block a PreToolUse
 esac
 
 # A restart ends every session, but not every hold: macOS keeps disablesleep across one (see
@@ -536,11 +542,96 @@ fi
 # printf, not echo: macOS sh's echo expands the \n inside the JSON and jq then rejects it
 sid=$(printf '%s\n' "${json:-}" | jq -r '.session_id // empty' 2>/dev/null | tr -cd 'A-Za-z0-9_-')
 bg=$(printf '%s\n' "${json:-}" | jq '.background_tasks // [] | length' 2>/dev/null | tr -cd 0-9)   # jq.exe ends lines in CRLF
+ev=$(printf '%s\n' "${json:-}" | jq -r '.hook_event_name // empty' 2>/dev/null | tr -cd A-Za-z)
+lost=''   # a turn that ended on an API error: the error as Claude Code showed it
+[ "$ev" = StopFailure ] && lost=$(printf '%s\n' "$json" |
+  jq -r 'select((.error // "") | test("^(server_error|unknown)?$")) | .last_assistant_message // empty' 2>/dev/null | tr -d '\r' | head -n 1)
+# Was the turn cut short by the internet? Claude Code ends it with one of these when the API can't be
+# reached or the connection drops or stalls (https://code.claude.com/docs/en/errors). Their error type is
+# only server_error or unknown (a refused connection reads server_error), so the message has to tell
+cut_off() {
+  if [ "$AUTO_CONTINUE" != 1 ] || [ -z "$sid" ]; then return 1; fi
+  case $lost in
+    *'Unable to connect'*|*'Connection refused'*|*'reach the API'*|*internet*|*'Connection dropped'*|\
+    *'Connection lost'*|*'timed out'*|*'went to sleep'*|*'stopped arriving'*|*stalled*|\
+    *ECONN*|*ENOTFOUND*|*EHOSTUNREACH*|*ETIMEDOUT*|*FailedToOpenSocket*) return 0 ;;
+  esac
+  return 1
+}
+# The terminal's title after a cut-off, as JSON for Claude Code to set (hooks have no terminal of their
+# own): the session's title with a note added, then the session's title alone, since Claude Code doesn't
+# put it back. A hook can't read the terminal's title, so it rebuilds it from the transcript.
+# $O/<id>.t: waiting; .b: "wait" saw it back; .w: the woken turn showed that, the next event lets go
+title() { jq -nc --arg s "$(printf '\033]0;%s\007' "$1")" '{terminalSequence: $s}'; }
+# The session's title: the last /rename's, else the last one Claude Code made up (it keeps making them)
+named() {
+  grep -E '"type":"(custom|ai)-title"' "$tp" 2>/dev/null |
+    jq -rs '(map(.customTitle // empty) | last) // (map(.aiTitle // empty) | last) // empty' 2>/dev/null | tr -d '\r'
+}
+noted() { t_n=$(named); title "${t_n:+$t_n · }$1"; }
+tp=$(printf '%s\n' "${json:-}" | jq -r '.transcript_path // empty' 2>/dev/null | tr -d '\r')
 if [ -n "$sid" ]; then case $1 in
-  on)  touch "$D/$sid" ;;
-  # Stop with background agents or shells still running: stay awake until they report back
-  off) if [ "${bg:-0}" -gt 0 ]; then touch "$D/$sid"; else rm -f "$D/$sid"; fi ;;
+  # A turn under way: nobody needs to wait to carry it on. A tool call is progress: the tries start over
+  on)  touch "$D/$sid"; rm -f "$O/$sid"; [ "$ev" != PreToolUse ] || rm -f "$O/$sid.n"
+       if [ -e "$O/$sid.b" ]; then mv -f "$O/$sid.b" "$O/$sid.w"; noted '🎉 Woho! Internet is back'
+       elif [ -e "$O/$sid.w" ] || [ -e "$O/$sid.t" ]; then rm -f "$O/$sid.w" "$O/$sid.t"; title "$(named)"; fi ;;
+  # Stop with background agents or shells still running: stay awake until they report back. Cut short
+  # by the internet: stay awake while "wait" waits for it
+  off) if [ "${bg:-0}" -gt 0 ] || cut_off; then touch "$D/$sid"; else rm -f "$D/$sid"; fi
+       case $ev in Stop) rm -f "$O/$sid.n" ;; SessionEnd) rm -f "$O/$sid" "$O/$sid".? ;; esac
+       # StopFailure ignores all other output, so nothing reaches Claude. Its hooks run in parallel, so
+       # "wait" may not have made $O yet
+       if cut_off; then mkdir -p "$O"; rm -f "$O/$sid.b" "$O/$sid.w"; : >"$O/$sid.t"; noted '☕ Waiting for the internet · claude-coffee'
+       elif [ "$ev" = Stop ] && [ -e "$O/$sid.w" ]; then rm -f "$O/$sid.w"; title "$(named)"; fi ;;
 esac; fi
+
+# Auto-continue. A turn the internet cut short ends in StopFailure, which also starts "wait" in the
+# background (asyncRewake). It keeps the marker fresh, so the machine stays up, and checks every
+# OFFLINE_POLL seconds. Once the API answers, exit 2 wakes Claude with the message on stderr, and it
+# carries on: a new turn, with its own UserPromptSubmit and Stop. It gives up instead, and the machine may
+# sleep, after OFFLINE_MINUTES, after three tries in a row with no tool call, or when a guard steps in. A
+# prompt you type meanwhile, or a newer cut-off, takes over. This is the script's only exit 2: StopFailure
+# runs "wait" and nothing else does (see docs/verification.md)
+online() {   # the API answers at all; without curl, just try, and the three-tries limit ends it
+  command -v curl >/dev/null 2>&1 || return 0
+  curl -s -o /dev/null --max-time 5 "${ANTHROPIC_BASE_URL:-https://api.anthropic.com}" 2>/dev/null
+}
+if [ "$1" = wait ]; then
+  cut_off || exit 0
+  mkdir -p "$O"
+  [ "$OFFLINE_MINUTES" -le 239 ] || OFFLINE_MINUTES=239   # the hook's own timeout is 4 hours
+  tries=$(($(cat "$O/$sid.n" 2>/dev/null || echo 0) + 1)); echo "$tries" >"$O/$sid.n"
+  since=$(date +%s) told=0 why=time
+  if [ "$tries" -gt 3 ]; then why=tries
+  else
+    echo "$$ $since" >"$O/$sid"
+    while :; do
+      [ "$(cut -d ' ' -f 1 "$O/$sid" 2>/dev/null)" = "$$" ] || exit 0   # you typed, or a newer cut-off took over
+      [ -e "$D/$sid" ] || exit 0                                       # the session ended
+      if [ -e "$H" ] || [ -e "$B" ]; then why=guard; break; fi        # a guard stepped in, and said why
+      if online; then
+        rm -f "$O/$sid"; touch "$D/$sid"; [ ! -e "$O/$sid.t" ] || mv -f "$O/$sid.t" "$O/$sid.b"
+        [ "$told" = 0 ] || notify "It's back! Phew. Telling Claude to carry on."
+        m=$((($(date +%s) - since) / 60))
+        if [ "$m" -gt 0 ]; then gone="The internet was gone for $m min and is back"; else gone="The connection dropped and is back"; fi
+        printf 'claude-coffee: %s. Your last turn ended on "%s". Carry on with the task from where you left off.\n' "$gone" "$lost" >&2
+        exit 2
+      fi
+      if [ "$told" = 0 ]; then
+        told=1
+        notify "Oh no, the internet's gone, and Claude does all its thinking out there. I can't finish this myself: I'm a shell script. Keeping your $MACHINE awake and checking every $OFFLINE_POLL seconds."
+      fi
+      [ $(($(date +%s) - since)) -lt $((OFFLINE_MINUTES * 60)) ] || break
+      touch "$D/$sid"
+      sleep "$OFFLINE_POLL"
+    done
+  fi
+  rm -f "$O/$sid" "$D/$sid"   # let go; the rest of the script lets the machine sleep
+  case $why in
+    time) notify "Still no internet after $OFFLINE_MINUTES minutes. I tried. I've let your $MACHINE sleep; type continue when you're back." ;;
+    tries) notify "The connection keeps failing, so I've stopped trying. Type continue once it's sorted." ;;
+  esac
+fi
 
 # Is Claude Code still at work, though no hook has fired for a while? Signs, among the processes under
 # any Claude Code: its own "caffeinate" (it keeps one through a turn in progress, one long tool call
@@ -571,6 +662,7 @@ if [ "$1" = check ]; then if claude_working; then touch "$W"; else rm -f "$W"; f
 limit=$STALE_MINUTES
 [ -n "$(find "$W" -mmin -2 2>/dev/null)" ] && limit=$((MAX_QUIET_HOURS * 60))
 [ "$1" = status ] || find "$D" -type f -mmin +"$limit" -delete
+[ "$1" != check ] || find "$O" -type f -mmin +1440 -delete 2>/dev/null   # a waiter's leftovers, from a crash
 busy=$(find "$D" -type f ! -mmin +"$limit" | wc -l | tr -d ' ')
 want=0; [ "$busy" = 0 ] || want=1
 
@@ -641,6 +733,19 @@ if [ "$1" = status ]; then
     *) r='on (SSH login)' ;;
   esac
   [ "$REMOTE" = 1 ] || r='disabled in config'
+  a="on: after a lost connection, carries on once it's back (waits up to $OFFLINE_MINUTES min)" worry=''
+  [ "$AUTO_CONTINUE" = 1 ] || a='disabled in config'
+  for f in "$O"/*; do   # a session waiting for the internet: its waiter's PID and since when
+    case $f in *.n) continue ;; esac
+    [ "$AUTO_CONTINUE" = 1 ] || continue
+    [ -e "$D/${f##*/}" ] || continue
+    m=$((($(date +%s) - $(cut -d ' ' -f 2 "$f")) / 60))
+    a="waiting for the internet: gone $m min, gives up in $((OFFLINE_MINUTES - m)) min"
+    if [ "$m" -lt 2 ]; then worry='Where did it go? It was right here.'
+    elif [ "$m" -lt 10 ]; then worry="Checked $((m * 60 / OFFLINE_POLL)) times. Still nothing. Is the router okay?"
+    elif [ "$m" -lt 30 ]; then worry="This task is far too complex for me. I'm a shell script."
+    else worry="What if Claude forgets everything? (It won't. It's all in the transcript.)"; fi
+  done
   heat
   case ${thermal:-} in 0) tn=nominal ;; 1) tn=fair ;; 2) tn=serious ;; 3) tn=critical ;; *) tn=unknown ;; esac
   h="battery ${battery:-?} °C, thermal state $tn"
@@ -651,6 +756,8 @@ if [ "$1" = status ]; then
   printf '  sleep          %s\n' "$s"
   printf '  busy sessions  %s\n' "$busy"
   printf '  remote mode    %s\n' "$r"
+  printf '  auto-continue  %s\n' "$a"
+  [ -z "$worry" ] || printf '                 little Claude (o_o;) "%s"\n' "$worry"
   printf '  lid            %s\n' "$(if lid_closed; then echo closed; else echo open; fi)"
   printf '  heat           %s\n' "$h"
   printf '  heat guard     %s\n' "$g"

@@ -247,12 +247,15 @@ main() {
   t=$(mktemp)
   # The settings come in on stdin and nothing else is a path: Git Bash would rewrite a command that
   # starts with / before a Windows jq.exe sees it
-  MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' jq --arg on "$CMD on" --arg off "$CMD off" '
+  # StopFailure also starts "wait" in the background: after a lost connection it waits for the internet,
+  # then wakes Claude to carry on (asyncRewake). Its timeout, 4 hours, bounds OFFLINE_MINUTES
+  MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' jq --arg on "$CMD on" --arg off "$CMD off" --arg wait "$CMD wait" '
     def add($e; $c): .[$e] = ((.[$e] // []) + [{hooks: [{type: "command", command: $c}]}]);
     .hooks = ((.hooks // {})
       | with_entries(.value |= map(select([.hooks[]?.command | strings | test("claude-coffee\\.sh")] | any | not)))
       | add("UserPromptSubmit"; $on) | add("PreToolUse"; $on)
-      | add("Stop"; $off) | add("StopFailure"; $off) | add("SessionEnd"; $off))
+      | add("Stop"; $off) | add("StopFailure"; $off) | add("SessionEnd"; $off)
+      | .StopFailure[-1].hooks += [{type: "command", command: $wait, asyncRewake: true, timeout: 14400}])
   ' <"$SETTINGS" >"$t" || { rm -f "$t"; die "$SETTINGS is not valid JSON; nothing changed"; }
   cat "$t" >"$SETTINGS"; rm -f "$t"
   step hooks "$SETTINGS (backup: settings.json.claude-coffee.bak)"

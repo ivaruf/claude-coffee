@@ -18,6 +18,7 @@
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
   <a href="#why-claude-coffee">Why</a> ·
+  <a href="#lost-the-internet">Lost the internet</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#guards">Guards</a> ·
   <a href="#linux-and-windows-beta">Linux &amp; Windows</a> ·
@@ -59,7 +60,7 @@ macOS then reports that *claude-coffee.sh can run in the background*: that's the
 
 ## Why claude-coffee
 
-On a Mac, `caffeinate` lets it sleep again, but not with the lid closed. Amphetamine keeps a closed Mac awake, but until you turn it off. **With claude-coffee you can close the lid, *and* your machine still gets to sleep.**
+On a Mac, `caffeinate` lets it sleep again, but not with the lid closed. Amphetamine keeps a closed Mac awake, but until you turn it off. **With claude-coffee you can close the lid, *and* your machine still gets to sleep.** And if the internet drops mid-task, it waits for it, then has Claude [carry on](#lost-the-internet).
 
 <p align="center">
   <img src="docs/assets/compare.svg" alt="Timeline of closing the lid mid-task. caffeinate: the Mac sleeps when the lid closes and Claude stops mid-task. Amphetamine: awake through the lid closing and long after Claude is done, until you turn it off. claude-coffee: awake through the lid closing, asleep a few seconds after Claude finishes." width="100%">
@@ -71,20 +72,42 @@ On a Mac, `caffeinate` lets it sleep again, but not with the lid closed. Ampheta
 </p>
 
 <p align="center">
-  <img src="docs/assets/compare-table.svg" alt="How claude-coffee compares. caffeinate, which Claude Code already runs: you can't close the lid mid-task; it sleeps again by itself; it knows when Claude is working. Amphetamine in closed-display mode: you can close the lid; it sleeps again only when you end it, or on a timer; it doesn't know when Claude is working. sudo pmset -a disablesleep 1 by hand: you can close the lid; it sleeps again only when you remember; it doesn't know. claude-coffee: you can close the lid; it sleeps again a few seconds after the last turn; it knows when Claude is working." width="100%">
+  <img src="docs/assets/compare-table.svg" alt="How claude-coffee compares. caffeinate, which Claude Code already runs: you can't close the lid mid-task; it sleeps again by itself; it knows when Claude is working; it doesn't carry on after a lost connection. Amphetamine in closed-display mode: you can close the lid; it sleeps again only when you end it, or on a timer; it doesn't know when Claude is working, or carry on after a lost connection. sudo pmset -a disablesleep 1 by hand: you can close the lid; it sleeps again only when you remember; it doesn't know, or carry on. claude-coffee: you can close the lid; it sleeps again a few seconds after the last turn; it knows when Claude is working; it carries on after a lost connection, once it's back." width="100%">
 </p>
+
+## Lost the internet?
+
+<p align="center">
+  <img src="docs/assets/no-internet.svg" alt="Little Claude stands on the closed MacBook, trembling and sweating, clutching a printout titled The Complex Task. A speech bubble says: I can't finish this myself. I'm a shell script. A crossed-out Wi-Fi sign pulses: checking, every 20 seconds, for up to an hour. Status: no internet, then carries on." width="100%">
+</p>
+
+When the internet drops mid-turn, Claude Code retries for a few minutes, then ends the turn with an error such as `API Error: Can't reach the API server`. claude-coffee doesn't let go then. It keeps the machine awake and checks every 20 seconds whether the API answers. The moment it does, it wakes Claude, which carries on where it stopped. A notification says when it's gone and when it's back, and so does the terminal's title:
+
+<p align="center">
+  <img src="docs/assets/tab-title.svg" alt="Three terminal tabs, one after another. Turn cut short, no internet, it waits: claude-coffee offline experiments · ☕ Waiting for the internet · claude-coffee. Claude wakes, the internet's back: claude-coffee offline experiments · 🎉 Woho! Internet is back. First tool call, back to business: claude-coffee offline experiments." width="100%">
+</p>
+
+`status` shows how long it's been, with little Claude's worries:
+
+```console
+  auto-continue  waiting for the internet: gone 12 min, gives up in 48 min
+                 little Claude (o_o;) "This task is far too complex for me. I'm a shell script."
+```
+
+After an hour without internet, three tries in a row that fail before a single tool call, or a guard stepping in, it gives up and lets the machine sleep; reply `continue` when you're back. A prompt you type meanwhile takes over. A rate limit or any other API error ends the turn as usual. The [field notes](docs/verification.md#losing-the-network) have the tests, including a real Wi-Fi drop.
 
 ## Features
 
 - **Lid closed, on battery, many sessions**: awake while any Claude Code session is mid-turn
 - **Sleeps when done**: no toggle or timer; a lid closed mid-turn sleeps a few seconds after the last turn ends
+- **Carries on after a lost connection**: the internet drops mid-turn, and it stays up, waits for it, then wakes Claude to [carry on](#lost-the-internet)
 - **Easy on the battery**: awake only while Claude works (lid closed while it waits: [1.5 W](docs/verification.md#power-draw) on an M4 Pro), no app or daemon, just a check once a minute, and a battery guard at 20%
 - **Long jobs**: a long tool call or a busy background build keeps the machine up, for up to 4 hours; an idle dev server doesn't
 - **Remote mode**: logged in over SSH, say from your phone, the machine also stays up between turns
 - **Heat and battery guards**: too hot with the lid closed, or low on battery, and it sleeps anyway
 - **Can't get stuck awake**: markers expire, and a check runs every minute
 - **Least privilege**: no root or admin on Linux and Windows; on macOS, sudo may run exactly two commands, and without that rule the Mac just sleeps as usual
-- **Silent**: the hooks print nothing, so nothing reaches Claude's context
+- **Silent**: the hooks print nothing, so nothing reaches Claude's context, apart from the one line that wakes it after a lost connection
 - **Tested**: CI runs the hook and the installer against fakes, never your real settings
 
 ## How it works
@@ -93,11 +116,12 @@ On a Mac, `caffeinate` lets it sleep again, but not with the lid closed. Ampheta
   <img src="docs/assets/how-it-works.svg" alt="Sequence: 1, you send Claude Code a prompt. 2, the UserPromptSubmit hook runs claude-coffee.sh on. 3, it runs pmset -a disablesleep 1, and the Mac is kept awake. You close the lid and leave; Claude keeps going. 4, on every tool call, PreToolUse runs it on again. 5, when the turn ends, Stop runs it off. 6, it runs pmset -a disablesleep 0. 7, the lid is closed, so it runs pmset sleepnow and the Mac goes to sleep." width="100%">
 </p>
 
-1. Hooks keep one marker file per busy session. `UserPromptSubmit` and `PreToolUse` create it; `Stop`, `StopFailure` and `SessionEnd` remove it, unless background tasks are still running.
+1. Hooks keep one marker file per busy session. `UserPromptSubmit` and `PreToolUse` create it; `Stop`, `StopFailure` and `SessionEnd` remove it, unless background tasks are still running or the internet cut the turn short.
 2. On macOS, any marker means `pmset -a disablesleep 1`, the one switch that holds with the lid closed. No marker means `0`. Linux and Windows have [their own switches](#linux-and-windows-beta).
 3. macOS decides on lid sleep only when the lid closes. So if it closed mid-turn, `pmset sleepnow` follows a few seconds after the last turn ends.
 4. Esc never fires `Stop`, so a marker that no hook has touched for 30 minutes expires. It stays, for up to 4 hours, while Claude Code is visibly still at work: its own `caffeinate` is running (a long tool call), or processes it started are using CPU or starting new ones (a background build). An idle dev server shows neither.
-5. The [guards](#guards) override everything above.
+5. A turn the internet cut short also starts a background `StopFailure` hook (`asyncRewake`). It keeps the marker fresh and waits for the API to answer, then exits 2, which wakes Claude: a new turn, [carrying on](#lost-the-internet).
+6. The [guards](#guards) override everything above.
 
 Each rule is there because something needed it. The [field notes](docs/verification.md) record what was checked on a real Mac, including three bugs only the hardware revealed.
 
@@ -155,6 +179,8 @@ REMOTE_MINUTES=60  # how long remote mode lasts after the last activity
 HEAT_GUARD=1       # 0 turns the heat guard off
 HOT_BATTERY_C=45   # with the lid closed, a battery this hot (°C) means sleep
 LOW_BATTERY=20     # on battery at this charge (%) or less, stop keeping the machine awake; 0 turns it off
+AUTO_CONTINUE=1    # 0: a turn the internet cut short waits for you to reply "continue"
+OFFLINE_MINUTES=60 # how long to stay awake waiting for the internet (at most 239)
 ```
 
 ## Troubleshooting
@@ -166,6 +192,7 @@ claude-coffee
   sleep          blocked                    # kept awake right now ("allowed" otherwise)
   busy sessions  2                          # Claude Code sessions that are mid-turn
   remote mode    off (no SSH login)         # on while you're logged in over SSH
+  auto-continue  on: …                      # "waiting for the internet" after a lost connection
   lid            closed
   heat           battery 31 °C, thermal state nominal
   heat guard     armed: …                   # "tripped", with when and why, after it stepped in
@@ -190,6 +217,7 @@ claude-coffee
 
 - Background work that looks idle, such as waiting on a download or a remote job, counts as finished after 30 minutes, just like an idle dev server. For a job like that, have Claude wait for it within the turn.
 - A permission prompt left unanswered counts as finished after 30 minutes. If Claude Code keeps its `caffeinate` running while it waits (untested), that becomes up to 4 hours.
+- Auto-continue knows a lost connection by Claude Code's error message (its error type only says `server_error`), so a new wording in a later Claude Code would end the turn as before. It checks for the internet by reaching `api.anthropic.com`, or `ANTHROPIC_BASE_URL`. It has carried on after one real Wi-Fi drop with the interactive CLI; the [field notes](docs/verification.md#a-real-drop) have that and the other tests.
 - If a Mac restarts mid-turn, sleep stays switched off until you log in; the check then lets go right away.
 - After a guard puts a Mac to sleep mid-turn, Claude Code may retry its request during macOS's brief maintenance wakes, which uses quota ([reported for another tool](https://dev.to/dawonlee/lid-closed-claude-code-still-running-how-macos-darkwakes-burn-your-weekly-limit-overnight-217i)).
 - After Esc, the machine may stay up for about 31 minutes. That assumes Claude Code stops its `caffeinate` on Esc, which is untested.

@@ -13,6 +13,7 @@
 #   notified  every notification's text, one per line
 #   canhold   present when keeping awake needs no password; agent: present when the check is installed
 #   boot      the system's boot ID (absent: none); a different one means it restarted
+#   net       up | down: whether the API answers (curl); netlag: down for that many more checks first
 # A fixture sets UNAME (what uname -s prints), HOLD_LABEL and AGENT_LABEL (status lines), and
 # RELEASE_SLEEPS: 1 if the system sleeps by itself when the hold ends with the lid closed (logind),
 # 0 if claude-coffee has to (macOS); its fakes then touch $T/slept on release or on "sleep now".
@@ -46,6 +47,11 @@ cat >"$T/bin/sleep" <<EOF
 #!/bin/sh
 [ -f $T/during-sleep ] && sh $T/during-sleep
 exit 0
+EOF
+cat >"$T/bin/curl" <<EOF
+#!/bin/sh
+if [ "\$(cat $T/netlag 2>/dev/null || echo 0)" -gt 0 ]; then echo \$((\$(cat $T/netlag) - 1)) >$T/netlag; exit 7; fi
+[ "\$(cat $T/net 2>/dev/null || echo up)" = up ] || exit 7
 EOF
 UNAME='' HOLD_LABEL='' AGENT_LABEL='' RELEASE_SLEEPS=0   # the fixture sets these
 # shellcheck source=/dev/null
@@ -161,6 +167,53 @@ echo battery >"$T/src"; echo 5 >"$T/pct"; echo 'LOW_BATTERY=0' >"$T/.claude/coff
 [ "$(hook on V)" = 1 ]; t           # guard switched off in config
 rm "$T/.claude/coffee/config"; echo ac >"$T/src"; echo 100 >"$T/pct"
 [ "$(hook off V)" = 0 ]
+# Auto-continue: the internet cuts a turn short (StopFailure), and "wait" carries it on when it's back
+O=$T/.claude/coffee/offline; N=$T/.claude/coffee/busy/N
+lost='API Error: Connection refused — a firewall or proxy may be blocking it (ECONNREFUSED)'
+dropped() { printf '{"session_id":"%s","hook_event_name":"StopFailure","error":"%s","last_assistant_message":"%s","transcript_path":"%s"}' "$1" "${3:-server_error}" "$2" "$T/tr"; }
+waits() { dropped "$@" | run wait 2>"$T/woke"; }
+said() { printf '%s\n' "$1" | head -n 1 | jq -r .terminalSequence; }   # the title a hook's output sets
+is() { printf '\033]0;%s\007' "$1"; }
+printf '{"type":"ai-title","aiTitle":"Old name"}\n{"type":"user"}\n{"type":"ai-title","aiTitle":"Fixing tests"}\n' >"$T/tr"
+echo closed >"$T/lid"; rm -f "$T/slept"
+[ "$(hook on N)" = 1 ]
+out=$(dropped N "$lost" | run off); [ "$(cat "$T/state")" = 1 ]; [ ! -e "$T/slept" ]; t   # cut short, lid closed: stays up to carry on
+[ "$(said "$out")" = "$(is 'Fixing tests · ☕ Waiting for the internet · claude-coffee')" ]; t   # ... and the session's title says so
+if waits N "$lost"; then exit 1; else [ $? = 2 ]; fi; t                    # back already: wakes Claude (exit 2) ...
+grep -q 'is back' "$T/woke"; grep -qF "$lost" "$T/woke"; grep -q 'Carry on with the task' "$T/woke"; t   # ... saying why
+[ -e "$N" ]; [ ! -e "$O/N" ]; [ "$(cat "$T/state")" = 1 ]; t               # ... and stays up for that turn
+: >"$T/notified"; echo 2 >"$T/netlag"
+if waits N "$lost"; then exit 1; else [ $? = 2 ]; fi; t                    # gone for two checks, then back: carries on
+grep -q "internet's gone" "$T/notified"; grep -q "It's back" "$T/notified"; t   # little Claude frets, then cheers
+if waits N "$lost"; then exit 1; fi                                        # a third try in a row
+waits N "$lost"; [ ! -e "$N" ]; [ "$(cat "$T/state")" = 0 ]; [ -e "$T/slept" ]; t   # a fourth, no tool call between: gives up, sleeps
+grep -q 'keeps failing' "$T/notified"; t
+out=$(hook on N ",\"hook_event_name\":\"PreToolUse\",\"transcript_path\":\"$T/tr\""); [ "$(printf '%s\n' "$out" | tail -n 1)" = 1 ]; [ ! -e "$O/N.n" ]; t   # a tool call is progress: the tries start over
+[ "$(said "$out")" = "$(is 'Fixing tests · 🎉 Woho! Internet is back')" ]; t   # ... and the woken turn's first event cheers
+echo down >"$T/net"; echo 'OFFLINE_MINUTES=0' >"$T/.claude/coffee/config"; rm -f "$T/slept"
+waits N "$lost"; [ ! -e "$N" ]; [ "$(cat "$T/state")" = 0 ]; [ -e "$T/slept" ]; t   # no internet for OFFLINE_MINUTES: gives up, sleeps
+grep -q 'Still no internet' "$T/notified"; t
+rm "$T/.claude/coffee/config"; out=$(hook on N ",\"transcript_path\":\"$T/tr\"")
+[ "$(said "$out")" = "$(is 'Fixing tests')" ]; [ "$(hook on N)" = 1 ]; t   # the next one: the session's title back, and then quiet
+echo "rm -f $O/N" >"$T/during-sleep"
+waits N "$lost"; [ -e "$N" ]; [ "$(cat "$T/state")" = 1 ]; t               # you type meanwhile: it bows out, your turn goes on
+rm "$T/during-sleep"; touch "$T/.claude/coffee/hot"; rm -f "$T/slept"
+waits N "$lost"; [ ! -e "$N" ]; [ "$(cat "$T/state")" = 0 ]; t             # a guard steps in: no carrying on
+echo open >"$T/lid"; [ "$(hook on N)" = 1 ]; [ ! -e "$T/.claude/coffee/hot" ]; echo closed >"$T/lid"; rm -f "$T/slept"
+[ "$(dropped N 'API Error: Rate limit reached' rate_limit | run off; cat "$T/state")" = 0 ]; [ -e "$T/slept" ]; t   # a rate limit isn't the internet
+waits N 'API Error: Rate limit reached' rate_limit; t                     # ... so nothing waits
+[ "$(hook on N)" = 1 ]
+[ "$(dropped N 'API Error: Internal server error' | run off; cat "$T/state")" = 0 ]; t   # nor is a server error
+printf '{"type":"custom-title","customTitle":"Renamed"}\n{"type":"ai-title","aiTitle":"Newer"}\n' >>"$T/tr"   # a /rename beats a newer made-up title
+dropped N "$lost" | run off >/dev/null; [ "$(said "$(hook on N ",\"transcript_path\":\"$T/tr\"")")" = "$(is 'Renamed')" ]; t   # you type while it waits: the title goes back, no cheering
+echo 'AUTO_CONTINUE=0' >"$T/.claude/coffee/config"; [ "$(hook on N)" = 1 ]
+[ "$(dropped N "$lost" | run off; cat "$T/state")" = 0 ]; waits N "$lost"; t   # switched off in config
+rm "$T/.claude/coffee/config"; [ "$(hook on N)" = 1 ]; mkdir -p "$O"; echo "99999 $(($(date +%s) - 900))" >"$O/N"
+out=$(run status)
+printf '%s\n' "$out" | grep -q 'auto-continue  waiting for the internet: gone 15 min, gives up in 45 min'; t
+printf '%s\n' "$out" | grep -qF "little Claude (o_o;) \"This task is far too complex for me. I'm a shell script.\""; t
+rm "$O/N"; [ "$(hook off N ',"hook_event_name":"Stop"')" = 0 ]; echo open >"$T/lid"; echo up >"$T/net"; rm -f "$T/slept"
+run status | grep -q "auto-continue  on: after a lost connection, carries on once it's back (waits up to 60 min)"; t
 if [ "$FX" != windows ]; then       # Windows has no cheap boot ID
   echo boot-1 >"$T/boot"; [ "$(hook on X1)" = 1 ]; [ -e "$T/.claude/coffee/busy/X1" ]; t   # first run with one: live markers stay
   echo boot-2 >"$T/boot"; echo 1 >"$T/state"   # restarted mid-turn; macOS keeps disablesleep
@@ -181,5 +234,6 @@ touch "$T/canhold" "$T/agent"; out=$(run status)
 printf "%s\n" "$out" | grep -qF "$(printf '  %-14s ok' "$HOLD_LABEL")"; t        # ... and can
 printf "%s\n" "$out" | grep -qF "$(printf '  %-14s ok' "$AGENT_LABEL")"; t
 [ -z "$(printf '{"session_id":"Q"}' | run on)" ]; t  # silent: nothing reaches Claude
+[ -z "$(dropped Q "$lost" | run wait 2>/dev/null)" ]; t   # ... "wait" neither: it speaks on stderr, when it wakes Claude
 if run bogus </dev/null 2>/dev/null; then exit 1; else [ $? = 1 ]; fi; t  # bad usage exits 1, never 2
 echo "hook ($FX): all $n checks passed"

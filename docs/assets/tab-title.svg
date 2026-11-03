@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 312" width="960" height="312" role="img" aria-labelledby="title desc">
+  <title id="title">The terminal's title while the internet is gone</title>
+  <desc id="desc">Three terminal tabs, one after another. When the internet cuts the turn short and claude-coffee waits: claude-coffee offline experiments · ☕ Waiting for the internet · claude-coffee. When it's back and Claude wakes: claude-coffee offline experiments · 🎉 Woho! Internet is back. At Claude's first tool call, back to business: claude-coffee offline experiments.</desc>
+  <style>
+    .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+    .name { font-size: 16px; font-weight: 700; fill: #fbf4ec; }
+    .sub  { font-size: 13px; fill: #a8917f; }
+    .tab  { font-size: 14.5px; fill: #fbf4ec; }
+    .x    { stroke: #a8917f; stroke-width: 1.6; stroke-linecap: round; }
+  </style>
+
+  <rect width="960" height="312" rx="22" fill="#1f140e"/>
+
+  <!-- steps down the left, joined by a dotted line; each step's tab on the right, title centred as in iTerm2 -->
+  <line x1="45" y1="70" x2="45" y2="242" stroke="#e8d6c4" stroke-opacity=".25" stroke-width="2" stroke-dasharray="1 7" stroke-linecap="round"/>
+
+  <!-- 1: cut short, waiting -->
+  <circle cx="45" cy="70" r="9" fill="#8fa3d6"/>
+  <text x="68" y="66" class="sans name">Turn cut short</text>
+  <text x="68" y="86" class="sans sub">no internet: it waits</text>
+  <rect x="270" y="46" width="654" height="48" rx="11" fill="#8fa3d6" fill-opacity=".13" stroke="#8fa3d6" stroke-opacity=".5" stroke-width="1.5"/>
+  <path d="M287 66 L295 74 M295 66 L287 74" class="x"/>
+  <text x="604" y="75" text-anchor="middle" class="sans tab">claude-coffee offline experiments · ☕ Waiting for the internet · claude-coffee</text>
+
+  <!-- 2: back, Claude wakes -->
+  <circle cx="45" cy="156" r="9" fill="#d2704f"/>
+  <text x="68" y="152" class="sans name">Claude wakes</text>
+  <text x="68" y="172" class="sans sub">the internet's back</text>
+  <rect x="270" y="132" width="654" height="48" rx="11" fill="#d2704f" fill-opacity=".16" stroke="#d2704f" stroke-opacity=".6" stroke-width="1.5"/>
+  <path d="M287 152 L295 160 M295 152 L287 160" class="x"/>
+  <text x="604" y="161" text-anchor="middle" class="sans tab">claude-coffee offline experiments · 🎉 Woho! Internet is back</text>
+
+  <!-- 3: first tool call, business as usual -->
+  <circle cx="45" cy="242" r="8.25" fill="#1f140e" stroke="#e8d6c4" stroke-opacity=".6" stroke-width="1.5"/>
+  <text x="68" y="238" class="sans name">First tool call</text>
+  <text x="68" y="258" class="sans sub">back to business</text>
+  <rect x="270" y="218" width="654" height="48" rx="11" fill="#e8d6c4" fill-opacity=".05" stroke="#e8d6c4" stroke-opacity=".2" stroke-width="1.5"/>
+  <path d="M287 238 L295 246 M295 238 L287 246" class="x"/>
+  <text x="604" y="247" text-anchor="middle" class="sans tab">claude-coffee offline experiments</text>
+</svg>

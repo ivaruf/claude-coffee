@@ -122,6 +122,56 @@ Measured on 2026-11-02, same Mac (16-inch, M4 Pro, 100 Wh battery), on battery.
 
 So a Mac kept awake with the lid closed and nothing to do uses about 12% of this battery over an 8-hour night, against under 5% asleep. Not yet measured: the lid closed while Claude runs builds or tests. Pilot Light's site reports 2.3 W for that on an M5 Max.
 
+## Losing the network
+
+Tested on 2026-11-03 with Claude Code 2.1.317, same Mac. Two headless runs (`claude -p`) went through a proxy that doesn't exist (`HTTPS_PROXY=http://127.0.0.1:9`), so every connection was refused and nothing left the machine.
+
+| Question | Result |
+|---|---|
+| Can a hook resume a turn that failed? | Not by its output: `StopFailure` ignores that ([hooks docs](https://code.claude.com/docs/en/hooks)). But a background one can: see [auto-continue](#auto-continue) below. |
+| How long does a turn last without a network? | About 3¼ minutes (gone between 183 and 198 s): 10 retries with backoff, then `API Error: Connection refused … (ECONNREFUSED)`. `StopFailure` removed its marker. |
+| With `CLAUDE_CODE_RETRY_WATCHDOG=1`? | Still retrying at 8 minutes, when it was stopped with SIGINT, and `SessionEnd` removed its marker. The docs give 300 retries, about 3 hours, for dropped connections and timeouts, and no limit for rate limits and overload ([errors](https://code.claude.com/docs/en/errors#tune-retry-behavior)). |
+| Does `caffeinate` run while it retries? | Not in `claude -p`: neither run had one in 8 minutes, while this interactive session had `caffeinate -i -t 300` as a child. So a headless run's marker lasts the plain 30 minutes. |
+| Not tested | A real network drop, an interactive turn stuck retrying, and a turn carrying on after the machine slept mid-retry. The docs count a connection broken by sleep as dropped, and retry it. |
+
+### Auto-continue
+
+Tested on 2026-11-03 with Claude Code 2.1.317, same Mac. Claude Code ran with a throwaway `CLAUDE_CONFIG_DIR`, a dummy API key and `ANTHROPIC_BASE_URL` pointing at a local port where nothing listened yet, so nothing left the machine. It ran as `claude -p --input-format stream-json`, which keeps the session open between turns like the interactive CLI. Its only hooks were test scripts given with `--settings`.
+
+| Question | Result |
+|---|---|
+| Does a background `StopFailure` hook wake Claude? | Yes. The turn ended with `API Error: Connection refused … (ECONNREFUSED)`. A `StopFailure` hook with `asyncRewake: true` waited until a fake Messages API came up on that port, then exited 2. Claude woke within a second, in a new turn, and answered through the fake API. The docs say such a hook "wakes Claude immediately even when the session is idle", and the code path for it doesn't look at the event. |
+| What does the woken turn look like to hooks? | Like any other: `UserPromptSubmit` (its prompt a `<task-notification>` summarised "Stop hook feedback"), then `Stop`. So claude-coffee's own hooks mark it busy and let go after, as usual. Claude gets the hook's stderr as a system reminder: `Stop hook blocking error from command "StopFailure:server_error": …`. |
+| Does the error type say it was the network? | No. A refused connection reads `server_error`, the same as a failure inside the API. So claude-coffee goes by the message, using the network errors listed on the [errors page](https://code.claude.com/docs/en/errors#network-and-connection-errors), and only for `server_error` or `unknown`. |
+| How does it tell the internet is back? | `curl -s -o /dev/null --max-time 5 https://api.anthropic.com` (or `ANTHROPIC_BASE_URL`): exit 0 for any HTTP answer, 7 for a refused connection. |
+| Hook timeout | Claude Code enforces `timeout` on `asyncRewake` hooks, unlike plain `async` ones. The installer sets 4 hours, so `OFFLINE_MINUTES` stops at 239. |
+| Not tested | Claude Code's other connection messages (`Connection lost mid-response`, `The response stopped arriving`) as hook input; claude-coffee matches them from the docs. |
+
+### A real drop
+
+On 2026-11-03, in an interactive session (Claude Code 2.1.317), with Wi-Fi switched off mid-turn from the menu bar. Times are local, from the session's transcript.
+
+| Time | What happened |
+|---|---|
+| 13:56:24 → 13:56:57 | A first drop, of 33 s. Claude Code's own retries rode it out (7 attempts, backing off from 0.6 to 16 s). The turn never failed, so claude-coffee had nothing to do. |
+| 13:57:29 | Wi-Fi off again, and Claude Code retries. |
+| 14:00:23 | After 2 min 54 s and 11 attempts, the turn ends: `API Error: Can't reach the API server — check your internet or DNS (ENOTFOUND)`. `StopFailure` keeps the marker and starts `wait`. |
+| 14:00:44 | The API answers; `wait` exits 2 and Claude wakes in a new turn with `claude-coffee: The connection dropped and is back. Your last turn ended on "API Error: Can't reach the API server …"`. Afterwards `~/.claude/coffee/offline` is empty, and only the running turn's marker is left. |
+
+So an outage shorter than Claude Code's own retries, about 3 minutes, needs nothing from claude-coffee, and a longer one now carries on by itself. The wake message counts from when Claude Code gave up, not from the drop, so it said "dropped" for an outage of about 3 minutes.
+
+### The terminal's title
+
+Notifications are easy to miss at the desk, so the title says it too. Tested the same day, in iTerm2, in the same interactive session.
+
+| Question | Result |
+|---|---|
+| Can a hook write to the terminal? | Not directly: hooks have no terminal. A `terminalSequence` field in a hook's JSON output has Claude Code write an allowlisted escape sequence for it, a title (OSC 0/1/2) among them, and `StopFailure` honours it while discarding all other output ([hooks docs](https://code.claude.com/docs/en/hooks#emit-terminal-notifications)). |
+| Does Claude Code put its own title back afterwards? | No. Through the woken turn and the next prompt, the tab kept `☕ Waiting for the internet · claude-coffee`, so claude-coffee has to put it back itself. |
+| Can a hook read the title it replaces? | No: that takes a terminal query (CSI), which hooks can't send or read. But Claude Code's title is the session's, and the transcript has it: `{"type":"custom-title","customTitle":…}` after a `/rename`, `{"type":"ai-title","aiTitle":…}` otherwise. Claude Code keeps writing `ai-title` entries after a rename, so the last `custom-title` wins. |
+| A real drop (14:36–14:41) | The tab read `claude-coffee offline experiments · ☕ Waiting for the internet · claude-coffee` once the turn failed, `… · 🎉 Woho! Internet is back` as Claude woke (`UserPromptSubmit`), and `claude-coffee offline experiments` again at its first tool call (`PreToolUse`). The JSON from `UserPromptSubmit` and `PreToolUse` didn't reach Claude's context. |
+| Not tested | Terminals other than iTerm2, and the title after `wait` gives up: it keeps the waiting note until the session's next prompt. |
+
 ## Long tool calls and background jobs
 
 Measured on 2026-11-01, same Mac. The question: how to tell a long tool call or a background build from a turn interrupted with Esc, or a dev server left running, when none of them fires a hook.

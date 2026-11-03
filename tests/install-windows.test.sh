@@ -46,6 +46,7 @@ cat >"$S" <<'EOF'
 EOF
 run install.sh
 [ "$(ours "$S")" = 5 ]; t                                            # five hook groups, in %USERPROFILE%\.claude
+[ "$(jq -c '.hooks.StopFailure[-1].hooks[1] | [.asyncRewake, .timeout, (.command | endswith(" wait"))]' "$S")" = '[true,14400,true]' ]; t   # ... StopFailure also starts the waiter, in the background
 [ ! -e "$T/.claude/settings.json" ]; t                               # ... not in Git Bash's ~
 [ "$(jq -r .model "$S")" = opus ]; t                                 # other settings kept
 # shellcheck disable=SC2088

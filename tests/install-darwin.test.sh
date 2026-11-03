@@ -55,6 +55,7 @@ cat >"$S" <<'EOF'
 EOF
 run install.sh
 [ "$(ours)" = 5 ]; t                                                  # five hook groups added
+[ "$(jq -c '.hooks.StopFailure[-1].hooks[1] | [.asyncRewake, .timeout, (.command | endswith(" wait"))]' "$S")" = '[true,14400,true]' ]; t   # ... StopFailure also starts the waiter, in the background
 [ "$(jq -r .model "$S")" = opus ]; t                                  # other settings kept
 # shellcheck disable=SC2088
 [ "$(jq -r '.hooks.Stop[0].hooks[0].command' "$S")" = '~/other.sh' ]; t  # other hooks kept, still first
