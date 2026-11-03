@@ -86,8 +86,9 @@ Darwin)
   notify() { osascript -e "display notification \"$1\" with title \"claude-coffee\"" >/dev/null 2>&1; }
   procs() { ps -A -o pid=,ppid=,etime=,%cpu=,args=; }
   # The user-owned "sshd-session: you@ttysNNN" (OpenSSH 9.8+) or "sshd: you@ttysNNN" (older); the
-  # root-owned "[priv]" process has no @
-  ssh_logins() { pgrep -u "$(id -u)" -f '^sshd(-session)?: [^ ]+@'; }
+  # root-owned "[priv]" process has no @. -a: macOS pgrep skips its own ancestors, and a hook run
+  # inside an SSH login has that login as one
+  ssh_logins() { pgrep -a -u "$(id -u)" -f '^sshd(-session)?: [^ ]+@'; }
   login_ages() { ps -o etime= -p "$(printf '%s' "$1" | tr '\n' ,)"; }
   # -k: with cached credentials "sudo -n" passes for any admin; only a NOPASSWD rule should count
   can_hold() { sudo -k -n -l | grep -qE 'NOPASSWD: (ALL$|.*/usr/bin/pmset -a disablesleep 1)'; }

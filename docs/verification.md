@@ -49,6 +49,7 @@ On 2026-10-31, `pmset -g` printed no `SleepDisabled` line when the value was 0. 
 | Long dark wakes after the Mac sleeps | That's macOS, not claude-coffee. One lasted 1 h 39 min (`kPMCPUAssertion`, held by a Safari SafeBrowsing update); `kPMUserDisabledAllSleep` never appeared during it. |
 | SSH login detection | A login shows up as root's `sshd-session: you [priv]` and your own `sshd-session: you@ttys025`. Only the second has an `@`. With no markers, against a live login: recent hook event → awake; 60 minutes without one and a login over an hour old → sleep allowed. |
 | The SSH pattern also matches older OpenSSH | `pgrep -f '^sshd(-session)?: [^ ]+@'` matches both `sshd-session: me@ttys998` and `sshd: me@ttys999` and skips `sshd-session: me [priv]`, checked with fake process titles. Not tested against a real pre-9.8 `sshd`. |
+| A hook inside the SSH login | macOS `pgrep` leaves out its own ancestors unless given `-a`, and Claude run in the SSH shell (or in `screen` started there) has the login as an ancestor. Without `-a`, `status` said "no SSH login" from inside one, and with the lid closed the Mac slept at the end of every phone-driven turn. Checked with a fake `sshd-session` title as parent and as sibling. Linux `pgrep` only skips itself, and its `-a` lists command lines instead. |
 
 ## A night of real use (2026-11-01)
 

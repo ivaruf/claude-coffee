@@ -6,6 +6,11 @@ HOLD_LABEL='sudo pmset'
 AGENT_LABEL='launch agent'
 RELEASE_SLEEPS=0   # macOS doesn't re-check a closed lid when sleep comes back: claude-coffee sleeps it
 
+# Real pgrep skips its own ancestors without -a; here every login is one, as for Claude run over SSH
+cat >"$T/bin/pgrep" <<EOF
+#!/bin/sh
+[ "\$1" = -a ] && [ -s $T/ssh ] && cat $T/ssh
+EOF
 cat >"$T/bin/pmset" <<EOF
 #!/bin/sh
 # Real pmset prints "SleepDisabled 0" or, on some days, no line at all for 0; \$T/noline picks the latter
