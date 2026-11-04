@@ -66,6 +66,27 @@ With the hook as it is on `main`, on AC. Sources: `pmset -g log` and the session
 
 The lid itself isn't in the power log while sleep is off, so "closed" is inferred: each time the display went off within seconds, and the hook only runs `sleepnow` when it reads the lid as closed.
 
+## A commute (2026-11-04)
+
+One prompt typed at the Mac before leaving home: pick tasks off the board and work through whatever needs no input. Then a commute on battery and a phone's hotspot, with the lid closed most of the way. Same Mac, Claude Code 2.1.317. Claude worked through 12 issues, on local branches. Sources: `pmset -g log`, configd's `network changed` messages in `log show`, and the session's transcript (which is in UTC). Times are local.
+
+| Time | What happened |
+|---|---|
+| 06:53:08 | Lid opened, on battery at 100%. Wi-Fi joined the hotspot at 06:53:32. |
+| 06:56:30 | The prompt. The display went off at 06:57:13. |
+| 07:17–07:35 | powerd logged the lid opening four times, for half a minute to 3 minutes each. No sleep entry in the power log for the whole trip, so the heat and battery guards never stepped in. |
+| 07:51:27 | An API request got no answer, and neither did the next one, at 07:51:43: the signal was fading. |
+| 07:53:20 → 07:55:56 | Out of range: Wi-Fi lost its address for 2 min 36 s (`v4(en0-:…)`, then DHCP again). |
+| 07:56:21 | The next request went out 25 s after the network came back. It was answered at 07:56:25, and the turn went on. It never failed, so `StopFailure` and auto-continue had nothing to do. |
+| 08:17:09 | The turn ended after 79 minutes (Claude Code's `turn_duration`). Two background tasks were still running, so the Mac stayed awake. |
+| 08:19:24, 08:21:45 | Each finished and started a short turn of its own. 348 tool calls in all. |
+| 08:23:15 → 08:23:22 | The last turn ended. 7 s later the Mac slept (`Software Sleep`), at 92%. |
+| 08:37:25 | Lid opened at work, still at 92%. |
+
+The address was back 18 s before Claude Code's retries would have run out, going by the 2 min 54 s of [the drop of 2026-11-03](#a-real-drop). Counted from the first unanswered request, though, the API was out of reach for about 4½ minutes and the turn still didn't fail. The transcript doesn't log retries, so it doesn't show why. A guess: a request that hangs on a weak signal uses up time rather than attempts.
+
+8 points of this 100 Wh battery in 90 minutes is about 5 W on average. That's for real work, with the hotspot's Wi-Fi and about 12 minutes of display. The 1% steps make it rough, and so does macOS showing 100% for a while after it's unplugged.
+
 ## Heat guard
 
 ### Official limits
@@ -121,7 +142,7 @@ Measured on 2026-11-02, same Mac (16-inch, M4 Pro, 100 Wh battery), on battery.
 | Lid closed, kept awake, Claude waiting on one 9-minute tool call | **1.5 W** on average: 1.07, 1.21, 1.53, 1.31, 1.09, 1.07, 1.16, 2.77 and 2.38 W, one reading a minute. The first reading, 4.9 W, dated from before the lid closed and is left out. |
 | Asleep, lid closed | **Under 0.6 W**: from 06:37 to 08:18 the charge stayed at 99%, and from 08:39 to 10:00 at 95% (`pmset -g log`, dark wakes included) |
 
-So a Mac kept awake with the lid closed and nothing to do uses about 12% of this battery over an 8-hour night, against under 5% asleep. Not yet measured: the lid closed while Claude runs builds or tests. Pilot Light's site reports 2.3 W for that on an M5 Max.
+So a Mac kept awake with the lid closed and nothing to do uses about 12% of this battery over an 8-hour night, against under 5% asleep. With the lid closed during real work, about 5 W over [a commute](#a-commute-2026-11-04), going by the charge alone. Pilot Light's site reports 2.3 W for builds or tests on an M5 Max.
 
 ## Losing the network
 
