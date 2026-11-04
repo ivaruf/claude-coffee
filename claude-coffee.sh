@@ -19,6 +19,7 @@ LOW_BATTERY=20      # on battery at this charge (%) or less, stop keeping the Ma
 AUTO_CONTINUE=1     # 0 = a turn the internet cut short waits for you to type "continue"
 OFFLINE_MINUTES=60  # how long to stay awake waiting for the internet to come back (at most 239)
 OFFLINE_POLL=20     # seconds between checks while it's gone
+AWAKE_ON_AC=0       # 1 = while plugged in, stay awake, lid closed too, Claude working or not
 # shellcheck source=/dev/null
 [ -f "$C/config" ] && . "$C/config"
 D=$C/busy   # one marker file per session that is mid-turn
@@ -499,8 +500,9 @@ PS1
   }
 
   # The check asks Windows (one PowerShell run) when there's something to watch: a session at work, our
-  # hold, a tripped guard. Idle, it only looks for SSH logins, for remote mode, and only starts PowerShell
-  # if tasklist (much quicker) shows an sshd at all. status always asks
+  # hold, a tripped guard, AWAKE_ON_AC (it has to see you plug in). Idle, it only looks for SSH logins,
+  # for remote mode, and only starts PowerShell if tasklist (much quicker) shows an sshd at all. status
+  # always asks
   win_gather() {
     if [ "$1" = ssh ] && ! win_noconv tasklist /fo csv /nh 2>/dev/null | grep -qi '^"sshd'; then : >"$WC"; return; fi
     win_ps gather "$1" >"$WC.$$"; mv -f "$WC.$$" "$WC" || rm -f "$WC.$$"
@@ -508,7 +510,7 @@ PS1
   case $1 in
     status) win_gather full ;;
     check)
-      if [ -e "$WH" ] || [ -e "$H" ] || [ -e "$B" ] || [ -n "$(ls "$D")" ]; then win_gather full
+      if [ -e "$WH" ] || [ -e "$H" ] || [ -e "$B" ] || [ -n "$(ls "$D")" ] || [ "$AWAKE_ON_AC" = 1 ]; then win_gather full
       elif [ "$REMOTE" = 1 ]; then win_gather ssh; fi ;;
   esac
   # What the check found, if it's from the last few minutes; anything else is unknown
@@ -681,6 +683,10 @@ if [ "$REMOTE" = 1 ] && ssh=$(ssh_logins); then
   fi
 fi
 
+# Plugged in: AWAKE_ON_AC=1 keeps the machine awake, Claude or not, so it stays reachable from elsewhere.
+# Unplugged, the usual rules are back at the next check, within a minute
+if [ "$AWAKE_ON_AC" = 1 ] && [ "$want" = 0 ]; then power; [ "$onbatt" = 1 ] || want=1; fi
+
 # 2 = the lid is closed and that normally means sleep (no external display keeping the Mac up)
 lid=$(lid_state)
 
@@ -767,6 +773,7 @@ if [ "$1" = status ]; then
   if [ -e "$B" ]; then bg="tripped $(cat "$B"); clears when plugged in"
   elif [ "$LOW_BATTERY" -gt 0 ]; then bg="armed: on battery at ${LOW_BATTERY}% or less → sleep"
   else bg='disabled in config'; fi
+  [ "$AWAKE_ON_AC" = 1 ] && p="$p; AWAKE_ON_AC keeps it awake while plugged in"
   printf '  power          %s\n' "$p"
   printf '  battery guard  %s\n' "$bg"
   can_hold >/dev/null 2>&1; printf '  %-14s %s\n' "$HOLD_LABEL" "$(ok $?)"

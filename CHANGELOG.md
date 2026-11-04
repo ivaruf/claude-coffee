@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- `AWAKE_ON_AC=1`: while plugged in, the machine stays awake, lid closed too, whether Claude is working or not, so you can reach it from elsewhere. Unplugged, the usual rules are back within a minute, and the heat guard still applies. Off by default.
 - Auto-continue: when the internet cuts a turn short, claude-coffee keeps the machine awake, checks every 20 seconds whether the API answers, then wakes Claude to carry on (a background `StopFailure` hook with `asyncRewake`). It gives up after `OFFLINE_MINUTES` (60), after three tries in a row with no tool call, or when a guard steps in, and lets the machine sleep. Notifications, the terminal's title (the session's name, with a note while it waits and a cheer when it's back) and `status` keep you posted, with little Claude's worries. `AUTO_CONTINUE=0` turns it off.
 
 - Linux (beta): a logind lock on sleep, idle and the lid switch, held by a transient user unit, with no root; a systemd user timer for the minute check; lid from logind, power and heat from sysfs. Not yet run on real hardware.

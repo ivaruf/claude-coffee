@@ -162,7 +162,7 @@ Driving Claude Code from your phone over SSH? While you're logged in, the machin
 <summary>Tips for a phone setup</summary>
 
 - Run `claude` inside `tmux` or `screen` (built into macOS), so the session survives a dropped connection. Reattach with `screen -dr`.
-- The machine has to be awake when you connect. Remote mode keeps it up; it doesn't wake it.
+- The machine has to be awake when you connect. Remote mode keeps it up; it doesn't wake it. On a charger, `AWAKE_ON_AC=1` keeps it up all along, lid closed too ([configuration](#configuration)).
 - Use key login: put your phone's public key in `~/.ssh/authorized_keys` and turn off password login.
 
 </details>
@@ -181,6 +181,7 @@ HOT_BATTERY_C=45   # with the lid closed, a battery this hot (°C) means sleep
 LOW_BATTERY=20     # on battery at this charge (%) or less, stop keeping the machine awake; 0 turns it off
 AUTO_CONTINUE=1    # 0: a turn the internet cut short waits for you to reply "continue"
 OFFLINE_MINUTES=60 # how long to stay awake waiting for the internet (at most 239)
+AWAKE_ON_AC=0      # 1: while plugged in, stay awake, lid closed too, Claude working or not
 ```
 
 ## Troubleshooting
@@ -203,7 +204,7 @@ claude-coffee
 ```
 
 - **Your machine slept while Claude was working?** Both last lines should say `ok`, and neither guard should say `tripped`.
-- **Your machine won't sleep?** `busy sessions` and `remote mode` show what's holding it. A session interrupted with Esc lets go within about 30 minutes.
+- **Your machine won't sleep?** `busy sessions`, `remote mode` and `power` (with `AWAKE_ON_AC`) show what's holding it. A session interrupted with Esc lets go within about 30 minutes.
 - **Still puzzled, on a Mac?** The kernel logs every sleep decision:
 
   ```sh
@@ -219,6 +220,7 @@ claude-coffee
 - A permission prompt left unanswered counts as finished after 30 minutes. If Claude Code keeps its `caffeinate` running while it waits (untested), that becomes up to 4 hours.
 - Auto-continue knows a lost connection by Claude Code's error message (its error type only says `server_error`), so a new wording in a later Claude Code would end the turn as before. It checks for the internet by reaching `api.anthropic.com`, or `ANTHROPIC_BASE_URL`. It has carried on after one real Wi-Fi drop with the interactive CLI; the [field notes](docs/verification.md#a-real-drop) have that and the other tests.
 - If a Mac restarts mid-turn, sleep stays switched off until you log in; the check then lets go right away.
+- On a Mac, claude-coffee owns `disablesleep`: within a minute it switches off one set by hand or by another tool, and with the lid closed the Mac sleeps. To keep a Mac up on the charger, use `AWAKE_ON_AC=1` instead.
 - After a guard puts a Mac to sleep mid-turn, Claude Code may retry its request during macOS's brief maintenance wakes, which uses quota ([reported for another tool](https://dev.to/dawonlee/lid-closed-claude-code-still-running-how-macos-darkwakes-burn-your-weekly-limit-overnight-217i)).
 - After Esc, the machine may stay up for about 31 minutes. That assumes Claude Code stops its `caffeinate` on Esc, which is untested.
 - Neither guard has met a real bag or a real 20% yet. A fanless MacBook Air working hard with the lid closed may trip the heat guard on a desk.

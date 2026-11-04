@@ -167,6 +167,19 @@ echo battery >"$T/src"; echo 5 >"$T/pct"; echo 'LOW_BATTERY=0' >"$T/.claude/coff
 [ "$(hook on V)" = 1 ]; t           # guard switched off in config
 rm "$T/.claude/coffee/config"; echo ac >"$T/src"; echo 100 >"$T/pct"
 [ "$(hook off V)" = 0 ]
+echo 'AWAKE_ON_AC=1' >"$T/.claude/coffee/config"; echo closed >"$T/lid"; rm -f "$T/slept"
+[ "$(chk)" = 1 ]; [ ! -e "$T/slept" ]; t     # AWAKE_ON_AC: plugged in, Claude idle, lid closed: awake
+hook on X >/dev/null; [ "$(hook off X)" = 1 ]; [ ! -e "$T/slept" ]; t   # a turn ends: still awake
+run status </dev/null | grep -q '^  power .*; AWAKE_ON_AC keeps it awake while plugged in$'; t
+echo battery >"$T/src"
+[ "$(chk)" = 0 ]; [ -e "$T/slept" ]; t       # unplugged with the lid closed: asleep at the next check
+rm "$T/slept"; [ "$(chk)" = 0 ]; [ ! -e "$T/slept" ]; t   # ... and it stays that way on battery
+echo ac >"$T/src"; [ "$(chk)" = 1 ]; echo 3 >"$T/thermal"
+[ "$(chk)" = 0 ]; [ -e "$T/slept" ]; t       # too hot on the charger: the heat guard still applies
+echo 0 >"$T/thermal"; echo open >"$T/lid"; rm "$T/slept"
+[ "$(chk)" = 1 ]; t                          # lid opens: guard reset, awake on the charger again
+rm "$T/.claude/coffee/config"
+[ "$(chk)" = 0 ]; t                          # off by default
 # Auto-continue: the internet cuts a turn short (StopFailure), and "wait" carries it on when it's back
 O=$T/.claude/coffee/offline; N=$T/.claude/coffee/busy/N
 lost='API Error: Connection refused — a firewall or proxy may be blocking it (ECONNREFUSED)'
