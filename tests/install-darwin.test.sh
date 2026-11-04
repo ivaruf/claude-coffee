@@ -6,6 +6,7 @@
 set -eu
 R=$(cd "$(dirname "$0")/.." && pwd)
 T=$(mktemp -d); n=0; rc=0
+export CLAUDE_COFFEE_TTY="$T/answer"   # no file: no terminal, so no question (and no hang under make test)
 trap 'rc=$?; rm -rf "$T"; [ "$rc" = 0 ] || echo "install (darwin): check $((n + 1)) failed" >&2' EXIT
 mkdir -p "$T/bin" "$T/.claude" "$T/empty"
 cat >"$T/bin/curl" <<EOF
@@ -75,6 +76,13 @@ run install.sh
 [ "$(grep -c bootstrap "$T/log")" = 1 ]; t                            # a loaded, unchanged agent is left alone
 sed 's|<integer>60</integer>|<integer>300</integer>|' "$P" >"$P.old" && mv "$P.old" "$P"; run install.sh
 [ "$(grep -c bootstrap "$T/log")" = 2 ]; grep -q '<integer>60</integer>' "$P"; t  # an older plist is replaced and reloaded
+C=$T/.claude/coffee/config
+[ ! -e "$C" ]; HOME=$T PATH="$T/bin:$PATH" sh "$R/install.sh" 2>&1 | grep -q "echo AWAKE_ON_AC=1 >>$C\$"; t   # no terminal: a tip, no config
+echo y >"$T/answer"; run install.sh; [ "$(cat "$C")" = AWAKE_ON_AC=1 ]; t   # "y": awake while plugged in
+echo n >"$T/answer"; run install.sh; [ "$(cat "$C")" = AWAKE_ON_AC=1 ]; t   # asked only once
+printf REMOTE=0 >"$C"; printf maybe >"$T/answer"; run install.sh
+[ "$(cat "$C")" = "$(printf 'REMOTE=0\nAWAKE_ON_AC=0')" ]; t       # anything but yes is no, on a line of its own
+rm "$T/answer"
 
 run uninstall.sh
 [ "$(ours)" = 0 ]; t

@@ -6,6 +6,7 @@
 set -eu
 R=$(cd "$(dirname "$0")/.." && pwd)
 T=$(mktemp -d); n=0; rc=0
+export CLAUDE_COFFEE_TTY="$T/answer"   # no file: no terminal, so no question (and no hang under make test)
 trap 'rc=$?; rm -rf "$T"; [ "$rc" = 0 ] || echo "install (windows): check $((n + 1)) failed" >&2' EXIT
 mkdir -p "$T/bin" "$T/empty" "$T/git/bin" "$T/profile/.claude"
 # The knobs of tests/hook.test.sh, for the fixture

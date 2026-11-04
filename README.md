@@ -36,7 +36,7 @@ Close the lid mid-task and your laptop goes to sleep, freezing Claude's work. **
 curl -fsSL https://raw.githubusercontent.com/ivaruf/claude-coffee/main/install.sh | sh
 ```
 
-On Windows, run it in Git Bash. Or read it first: `git clone https://github.com/ivaruf/claude-coffee && cd claude-coffee && ./install.sh`. On a Mac, the installer may ask for your password once. Running sessions pick it up on their next turn, and running it again updates it. To see what it's doing: `~/.claude/hooks/claude-coffee.sh status`.
+On Windows, run it in Git Bash. Or read it first: `git clone https://github.com/ivaruf/claude-coffee && cd claude-coffee && ./install.sh`. On a Mac, the installer may ask for your password once. It also asks, once, whether to keep the machine awake whenever it's plugged in ([`AWAKE_ON_AC`](#configuration); no by default). Running sessions pick it up on their next turn, and running it again updates it. To see what it's doing: `~/.claude/hooks/claude-coffee.sh status`.
 
 <details>
 <summary><b>What the installer changes</b></summary>
@@ -49,6 +49,7 @@ On Windows, run it in Git Bash. Or read it first: `git clone https://github.com/
 | macOS: a launch agent that re-checks every minute, and at login | `~/Library/LaunchAgents/com.github.ivaruf.claude-coffee.plist` |
 | Linux: a systemd user timer that re-checks every minute | `~/.config/systemd/user/claude-coffee.timer` and `.service` |
 | Windows: a scheduled task that re-checks every minute while you're logged on | Task Scheduler: `claude-coffee` |
+| Your answer about staying awake while plugged in | `~/.claude/coffee/config` |
 
 macOS then reports that *claude-coffee.sh can run in the background*: that's the launch agent. Requires `jq`, built into recent macOS (otherwise `brew install jq`).
 

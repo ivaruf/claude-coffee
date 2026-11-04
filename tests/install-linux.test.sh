@@ -7,6 +7,7 @@
 set -eu
 R=$(cd "$(dirname "$0")/.." && pwd)
 T=$(mktemp -d); n=0; rc=0
+export CLAUDE_COFFEE_TTY="$T/answer"   # no file: no terminal, so no question (and no hang under make test)
 trap 'rc=$?; rm -rf "$T"; [ "$rc" = 0 ] || echo "install (linux): check $((n + 1)) failed" >&2' EXIT
 mkdir -p "$T/bin" "$T/.claude" "$T/empty"
 # The fixture's knobs (see tests/hook.test.sh), then its fakes

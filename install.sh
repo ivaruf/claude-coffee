@@ -9,6 +9,7 @@ SETTINGS=~/.claude/settings.json
 # The ~ is meant literally: Claude Code runs hook commands in a shell, which expands it.
 # shellcheck disable=SC2088
 CMD='~/.claude/hooks/claude-coffee.sh'
+TTY=${CLAUDE_COFFEE_TTY:-/dev/tty}   # where the one question is answered; the tests point it at a file
 
 step() { printf '  \033[32m✓\033[0m %-14s %s\n' "$1" "$2"; }
 warn() { printf '  \033[33m!\033[0m %-14s %s\n' "$1" "$2"; }
@@ -262,6 +263,22 @@ main() {
 
   # 3. What lets the hook keep the machine awake, and the every-minute check
   "${os}_install"
+
+  # 4. One question, asked once: the answer goes in the config, where it can be changed. Asked of the
+  #    terminal, since under curl ... | sh stdin is the script. With none (CI, or Claude Code's !), a tip
+  conf=~/.claude/coffee/config
+  if grep -qs '^AWAKE_ON_AC=' "$conf"; then :
+  elif ! (: <"$TTY") 2>/dev/null; then
+    printf "\n  To keep this machine awake whenever it's plugged in, lid closed too:\n    echo AWAKE_ON_AC=1 >>%s\n" "$conf"
+  else
+    printf "\n  Keep this machine awake whenever it's plugged in, lid closed too, Claude working or not?\n"
+    printf '  Handy for reaching it from elsewhere. [y/N] '
+    a=; read -r a <"$TTY" || :
+    case $a in [Yy]*) v=1 ;; *) v=0 ;; esac
+    mkdir -p "$(dirname "$conf")"
+    { [ ! -s "$conf" ] || [ -z "$(tail -c 1 "$conf")" ] || echo; echo "AWAKE_ON_AC=$v"; } >>"$conf"   # a hand-edited last line may lack its newline
+    step config "$conf (AWAKE_ON_AC=$v)"
+  fi
 
   printf '\n  Done. Running Claude Code sessions pick this up on their next turn.\n'
   printf '  Check any time:  %s status\n\n' "$HOOK"
