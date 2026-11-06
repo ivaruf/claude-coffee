@@ -7,6 +7,7 @@
 #                                  connection to come back, then wakes Claude to carry on
 #        claude-coffee.sh check    the every-minute job (launchd, a systemd timer, Task Scheduler)
 #        claude-coffee.sh status   for you; changes nothing
+#        claude-coffee.sh standby [5h|90m|off]   for you: stay reachable for a while, Claude or not
 
 C=~/.claude/coffee
 STALE_MINUTES=30    # drop a marker no hook has touched for this long (Esc never fires Stop) ...
@@ -27,6 +28,7 @@ L=$C/last   # touched on every hook event
 H=$C/hot    # the heat guard tripped; stays until the lid opens
 B=$C/low    # the battery guard tripped; goes when the Mac is plugged in or charged above LOW_BATTERY
 O=$C/offline   # sessions waiting for the internet: <id> (the waiter's PID, since when), <id>.n (tries)
+SB=$C/standby  # timed standby: the second it ends, as date +%s
 mkdir -p "$D"
 
 # Platform layer: everything OS-specific is in these functions, and the logic below only calls them.
@@ -528,10 +530,21 @@ PS1
 *) exit 0 ;;   # not supported: stay out of the way
 esac
 
+clock() { date -d "@$1" +%H:%M 2>/dev/null || date -r "$1" +%H:%M; }   # GNU, then BSD
 case $1 in
   on|off|wait) json=$(cat); touch "$L" ;;
   check|status) ;;
-  *) echo "usage: ${0##*/} on|off|wait|check|status" >&2; exit 1 ;;   # not 2: that would block a PreToolUse
+  standby)   # 5 h unless told; capped at 24, so a typo can't keep the machine up for weeks
+    case ${2:-5h} in
+      off) rm -f "$SB"; echo 'claude-coffee: standby off' ;;
+      *) a=${2:-5h}; n=${a%[hm]}
+         case $n in [1-9]|[1-9][0-9]|[1-9][0-9][0-9]|[1-9][0-9][0-9][0-9]) ;; *) n=99999 ;; esac
+         case $a in *m) ;; *) n=$((n * 60)) ;; esac
+         if [ "$n" -gt 1440 ]; then echo "usage: ${0##*/} standby [5h | 3h | 90m, at most 24h | off]" >&2; exit 1; fi
+         e=$(($(date +%s) + n * 60)); echo "$e" >"$SB"
+         echo "claude-coffee: standby until $(clock "$e")" ;;
+    esac ;;
+  *) echo "usage: ${0##*/} on|off|wait|check|status|standby" >&2; exit 1 ;;   # not 2: that would block a PreToolUse
 esac
 
 # A restart ends every session, but not every hold: macOS keeps disablesleep across one (see
@@ -539,7 +552,7 @@ esac
 # Not on the first run after an install or update: those markers are live
 if [ "$1" != status ] && b_id=$(boot_id) && [ -n "$b_id" ]; then
   if [ ! -e "$C/boot" ]; then echo "$b_id" >"$C/boot"
-  elif [ "$(cat "$C/boot")" != "$b_id" ]; then rm -f "$D"/* "$C/working"; echo "$b_id" >"$C/boot"; fi
+  elif [ "$(cat "$C/boot")" != "$b_id" ]; then rm -f "$D"/* "$C/working" "$SB"; echo "$b_id" >"$C/boot"; fi
 fi
 
 # printf, not echo: macOS sh's echo expands the \n inside the JSON and jq then rejects it
@@ -692,6 +705,16 @@ if [ "$REMOTE" = 1 ]; then
   fi
 fi
 
+# Timed standby (claude-coffee.sh standby 5h): awake until then, Claude or not, so you can get in when
+# the charger can't be trusted. The guards below still win, and a restart ends it. shortcut: it goes by
+# the wall clock, so setting the clock moves the end by as much; the 24 h cap bounds a jump back.
+sb=0; sb_now=$(date +%s)
+if [ -e "$SB" ]; then
+  sb=$(cat "$SB" 2>/dev/null); case $sb in ''|*[!0-9]*) sb=0 ;; esac
+  if [ "$sb" -gt "$sb_now" ] && [ "$sb" -le $((sb_now + 86400)) ]; then want=1
+  else sb=0; [ "$1" = status ] || rm -f "$SB"; fi
+fi
+
 # Plugged in: AWAKE_ON_AC=1 keeps the machine awake, Claude or not, so it stays reachable from elsewhere.
 # Unplugged, the usual rules are back at the next check, within a minute
 if [ "$AWAKE_ON_AC" = 1 ] && [ "$want" = 0 ]; then power; [ "$onbatt" = 1 ] || want=1; fi
@@ -773,6 +796,8 @@ if [ "$1" = status ]; then
   printf '  sleep          %s\n' "$s"
   printf '  busy sessions  %s\n' "$busy"
   printf '  remote mode    %s\n' "$r"
+  if [ "$sb" -gt 0 ]; then m=$(((sb - sb_now + 59) / 60)); sbl="on until $(clock "$sb") ($((m / 60)) h $((m % 60)) min left)"; else sbl=off; fi
+  printf '  standby        %s\n' "$sbl"
   printf '  auto-continue  %s\n' "$a"
   [ -z "$worry" ] || printf '                 little Claude (o_o;) "%s"\n' "$worry"
   printf '  lid            %s\n' "$(if lid_closed; then echo closed; else echo open; fi)"

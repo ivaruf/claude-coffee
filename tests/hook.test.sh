@@ -188,6 +188,26 @@ echo 0 >"$T/thermal"; echo open >"$T/lid"; rm "$T/slept"
 [ "$(chk)" = 1 ]; t                          # lid opens: guard reset, awake on the charger again
 rm "$T/.claude/coffee/config"
 [ "$(chk)" = 0 ]; t                          # off by default
+# Standby: reachable for a while, Claude or not, until it runs out
+SB=$T/.claude/coffee/standby; echo closed >"$T/lid"; echo battery >"$T/src"; echo 80 >"$T/pct"; rm -f "$T/slept"
+run standby 2h </dev/null | grep -q '^claude-coffee: standby until [0-9][0-9]:[0-9][0-9]$'; [ "$(cat "$T/state")" = 1 ]; t   # on battery, lid closed, nothing else: awake at once
+[ "$(chk)" = 1 ]; [ ! -e "$T/slept" ]; t     # ... and the minute check keeps it so
+run status </dev/null | grep -q '^  standby        on until [0-9][0-9]:[0-9][0-9] (2 h 0 min left)$'; t
+echo 15 >"$T/pct"; [ "$(chk)" = 0 ]; [ -e "$T/slept" ]; t   # the battery guard still wins
+echo ac >"$T/src"; rm "$T/slept"; [ "$(chk)" = 1 ]; t       # plugged in: guard cleared, standby on again
+echo $(($(date +%s) - 1)) >"$SB"
+[ "$(chk)" = 0 ]; [ -e "$T/slept" ]; [ ! -e "$SB" ]; t      # time's up: let go, asleep as usual
+echo $(($(date +%s) + 90000)) >"$SB"; [ "$(chk)" = 0 ]; [ ! -e "$SB" ]; t   # over 24 h left (the clock went back): not trusted
+run standby 30m </dev/null >/dev/null; [ "$(chk)" = 1 ]; t   # minutes
+run standby </dev/null >/dev/null; run status </dev/null | grep -q '(5 h 0 min left)$'; t   # 5 h unless told
+run standby off </dev/null >/dev/null; [ ! -e "$SB" ]; [ "$(cat "$T/state")" = 0 ]; t   # off: the usual rules at once
+for bad in 25h 1441m 0 05h x 5d; do if run standby "$bad" </dev/null 2>/dev/null; then exit 1; fi; done; [ ! -e "$SB" ]; t   # refused
+if [ "$FX" != windows ]; then       # a restart ends it, like the markers
+  echo boot-1 >"$T/boot"; run standby 1h </dev/null >/dev/null; echo boot-2 >"$T/boot"
+  [ "$(chk)" = 0 ]; [ ! -e "$SB" ]; t
+  rm "$T/boot" "$T/.claude/coffee/boot"
+fi
+echo open >"$T/lid"; echo 100 >"$T/pct"; rm -f "$T/slept"
 # Auto-continue: the internet cuts a turn short (StopFailure), and "wait" carries it on when it's back
 O=$T/.claude/coffee/offline; N=$T/.claude/coffee/busy/N
 lost='API Error: Connection refused — a firewall or proxy may be blocking it (ECONNREFUSED)'

@@ -109,6 +109,21 @@ With that installed, the same Mac, lid closed and on battery, and the phone walk
 
 Next, the burrow sshd's `ClientAliveInterval` went from 30 s to 300 s (`ClientAliveCountMax` 3), so that a quiet session sends nothing for 5 minutes. A login from 11:00:14 still ended `Operation timed out` at 11:22:54, on a longer walk. When the phone went out of range isn't known, so that doesn't say how much longer it held.
 
+## A charger that didn't take (2026-11-06, afternoon)
+
+Away from home, the phone couldn't SSH in: the Mac was asleep. The SSH setup worked as designed. What was missing was a way to keep the Mac reachable for a stretch away from it, on battery, before logging in. Sources: `pmset -g log`, the kernel's `PMRD` lines and launchd's runs of the check in `log show`, and the burrow `sshd.log`. Times are local.
+
+| Time | What happened |
+|---|---|
+| 09:06:35 → 17:34:30 | On battery all day. `pmset -g log` has no `Using AC` in between. |
+| 12:22:57 → 12:22:59 | The minute check put the Mac to sleep, lid closed. The phone's login had dropped at 11:22, and a dropped login counts for an hour. |
+| 13:52 → 15:37 | At the Mac on and off: idle sleeps at 14:30 and 14:36, with the lid open. |
+| 15:37:07 → 15:37:17 | The lid opened and closed again, presumably to plug the charger in. It didn't take: still on battery at 86%, and macOS slept the Mac itself (`Clamshell Sleep`). Nothing asked claude-coffee to keep it up. |
+| 15:37 → 17:34 | Asleep at 86%. Not one connection from the phone reached sshd. |
+| 17:34:30 | Power at last (`Using AC`), and the phone logged in at 17:45. |
+
+It was the second time a charger didn't take; the first was on 2026-11-04. On the charger, `AWAKE_ON_AC` would have kept the Mac up, and on battery nothing did. So claude-coffee got `standby` (5 hours unless told): a timed hold that doesn't need Claude or a login, with the guards still in charge. At the 1.5 W measured [below](#power-draw), 5 hours costs about 7% of this 100 Wh battery.
+
 ## Heat guard
 
 ### Official limits

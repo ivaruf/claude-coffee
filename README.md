@@ -104,7 +104,7 @@ After an hour without internet, three tries in a row that fail before a single t
 - **Carries on after a lost connection**: the internet drops mid-turn, and it stays up, waits for it, then wakes Claude to [carry on](#lost-the-internet)
 - **Easy on the battery**: awake only while Claude works (lid closed while it waits: [1.5 W](docs/verification.md#power-draw) on an M4 Pro), no app or daemon, just a check once a minute, and a battery guard at 20%
 - **Long jobs**: a long tool call or a busy background build keeps the machine up, for up to 4 hours; an idle dev server doesn't
-- **Remote mode**: logged in over SSH, say from your phone, the machine also stays up between turns
+- **Remote mode**: logged in over SSH, say from your phone, the machine also stays up between turns, and `standby 5h` keeps it reachable before you log in
 - **Heat and battery guards**: too hot with the lid closed, or low on battery, and it sleeps anyway
 - **Can't get stuck awake**: markers expire, and a check runs every minute
 - **Least privilege**: no root or admin on Linux and Windows; on macOS, sudo may run exactly two commands, and without that rule the Mac just sleeps as usual
@@ -159,11 +159,20 @@ The [field notes](docs/verification.md#linux) list what each backend relies on a
 
 Driving Claude Code from your phone over SSH? While you're logged in, the machine also stays up between turns, so it doesn't fall asleep while you type the next prompt. It lapses after an hour without activity. A dropped connection, say your phone out of signal, doesn't end it early, so you can get back in.
 
+Going out, and want to get in later? Remote mode can't help before you log in, and a charger can fail. Standby keeps the machine reachable for a while, lid closed too, whether Claude is working or not:
+
+```sh
+~/.claude/hooks/claude-coffee.sh standby       # 5 hours; or standby 3h, standby 90m, at most 24h
+~/.claude/hooks/claude-coffee.sh standby off   # back to the usual rules right away
+```
+
+It runs out by itself, and a restart ends it. The heat and battery guards still apply, so on battery it lets go at 20%. Kept awake with the lid closed, a Mac with nothing to do drew [1.5 W](docs/verification.md#power-draw), about 7% of a 100 Wh battery over 5 hours.
+
 <details>
 <summary>Tips for a phone setup</summary>
 
 - Run `claude` inside `tmux` or `screen` (built into macOS), so the session survives a dropped connection. Reattach with `screen -dr`.
-- The machine has to be awake when you connect. Remote mode keeps it up; it doesn't wake it. On a charger, `AWAKE_ON_AC=1` keeps it up all along, lid closed too ([configuration](#configuration)).
+- The machine has to be awake when you connect. Remote mode keeps it up; it doesn't wake it. `standby` keeps it up before you connect. On a charger, `AWAKE_ON_AC=1` keeps it up all along, lid closed too ([configuration](#configuration)).
 - Use key login: put your phone's public key in `~/.ssh/authorized_keys` and turn off password login.
 
 </details>
@@ -194,6 +203,7 @@ claude-coffee
   sleep          blocked                    # kept awake right now ("allowed" otherwise)
   busy sessions  2                          # Claude Code sessions that are mid-turn
   remote mode    off (no SSH login)         # on while you're logged in over SSH
+  standby        off                        # "on until 22:40 (4 h 52 min left)" after standby
   auto-continue  on: …                      # "waiting for the internet" after a lost connection
   lid            closed
   heat           battery 31 °C, thermal state nominal
@@ -205,7 +215,7 @@ claude-coffee
 ```
 
 - **Your machine slept while Claude was working?** Both last lines should say `ok`, and neither guard should say `tripped`.
-- **Your machine won't sleep?** `busy sessions`, `remote mode` and `power` (with `AWAKE_ON_AC`) show what's holding it. A session interrupted with Esc lets go within about 30 minutes.
+- **Your machine won't sleep?** `busy sessions`, `remote mode`, `standby` and `power` (with `AWAKE_ON_AC`) show what's holding it. A session interrupted with Esc lets go within about 30 minutes.
 - **Still puzzled, on a Mac?** The kernel logs every sleep decision:
 
   ```sh
