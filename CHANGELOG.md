@@ -28,6 +28,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- Auto-continue woke an idle session after the internet came back, telling Claude to carry on with nothing to carry on: Claude Code's background requests end in `StopFailure` too. It now waits only for a turn that was running.
 - Remote mode ended the moment an SSH login dropped, so a phone that lost its signal for a couple of minutes left a lid-closed Mac on battery asleep, out of reach (seen twice on 2026-11-06). A dropped login now counts until remote mode would lapse anyway, an hour after the last activity.
 - macOS remote mode missed the SSH login Claude itself runs in (`pgrep` leaves out its own ancestors without `-a`), so with the lid closed the Mac slept at the end of every turn sent from a phone.
 - `curl … | sh` decides that it was piped from `$0` alone, so a `claude-coffee.sh` in the current folder can't be installed instead of the download.

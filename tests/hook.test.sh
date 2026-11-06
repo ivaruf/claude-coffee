@@ -197,6 +197,8 @@ said() { printf '%s\n' "$1" | head -n 1 | jq -r .terminalSequence; }   # the tit
 is() { printf '\033]0;%s\007' "$1"; }
 printf '{"type":"ai-title","aiTitle":"Old name"}\n{"type":"user"}\n{"type":"ai-title","aiTitle":"Fixing tests"}\n' >"$T/tr"
 echo closed >"$T/lid"; rm -f "$T/slept"
+out=$(dropped I "$lost" | run off); [ -z "$out" ]; [ ! -e "$T/.claude/coffee/busy/I" ]; t   # an idle session's background request fails: no turn, no title ...
+waits I "$lost"; [ ! -s "$T/woke" ]; t                                    # ... and nothing waits to wake it
 [ "$(hook on N)" = 1 ]
 out=$(dropped N "$lost" | run off); [ "$(cat "$T/state")" = 1 ]; [ ! -e "$T/slept" ]; t   # cut short, lid closed: stays up to carry on
 [ "$(said "$out")" = "$(is 'Fixing tests · ☕ Waiting for the internet · claude-coffee')" ]; t   # ... and the session's title says so
@@ -226,7 +228,7 @@ waits N 'API Error: Rate limit reached' rate_limit; t                     # ... 
 [ "$(hook on N)" = 1 ]
 [ "$(dropped N 'API Error: Internal server error' | run off; cat "$T/state")" = 0 ]; t   # nor is a server error
 printf '{"type":"custom-title","customTitle":"Renamed"}\n{"type":"ai-title","aiTitle":"Newer"}\n' >>"$T/tr"   # a /rename beats a newer made-up title
-dropped N "$lost" | run off >/dev/null; [ "$(said "$(hook on N ",\"transcript_path\":\"$T/tr\"")")" = "$(is 'Renamed')" ]; t   # you type while it waits: the title goes back, no cheering
+hook on N >/dev/null; dropped N "$lost" | run off >/dev/null; [ "$(said "$(hook on N ",\"transcript_path\":\"$T/tr\"")")" = "$(is 'Renamed')" ]; t   # you type while it waits: the title goes back, no cheering
 echo 'AUTO_CONTINUE=0' >"$T/.claude/coffee/config"; [ "$(hook on N)" = 1 ]
 [ "$(dropped N "$lost" | run off; cat "$T/state")" = 0 ]; waits N "$lost"; t   # switched off in config
 rm "$T/.claude/coffee/config"; [ "$(hook on N)" = 1 ]; mkdir -p "$O"; echo "99999 $(($(date +%s) - 900))" >"$O/N"

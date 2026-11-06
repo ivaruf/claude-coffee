@@ -107,6 +107,8 @@ So remote mode on battery hung on the login being there at the moment a hook or 
 
 With that installed, the same Mac, lid closed and on battery, and the phone walked out of range at about 10:41. sshd dropped the login at 10:44:51. The Mac stayed up: when the network came back at 10:50:15, macOS tried to sleep twice (10:50:21 and 10:50:45), and both times the kernel logged `prevented by kPMUserDisabledAllSleep`. The phone logged in again at 10:50:40, without anyone touching the Mac. The SSH app still has to reconnect after a drop like that. Claude in `tmux` carries on.
 
+Next, the burrow sshd's `ClientAliveInterval` went from 30 s to 300 s (`ClientAliveCountMax` 3), so that a quiet session sends nothing for 5 minutes. A login from 11:00:14 still ended `Operation timed out` at 11:22:54, on a longer walk. When the phone went out of range isn't known, so that doesn't say how much longer it held.
+
 ## Heat guard
 
 ### Official limits
@@ -187,6 +189,7 @@ Tested on 2026-11-03 with Claude Code 2.1.317, same Mac. Claude Code ran with a 
 | Does the error type say it was the network? | No. A refused connection reads `server_error`, the same as a failure inside the API. So claude-coffee goes by the message, using the network errors listed on the [errors page](https://code.claude.com/docs/en/errors#network-and-connection-errors), and only for `server_error` or `unknown`. |
 | How does it tell the internet is back? | `curl -s -o /dev/null --max-time 5 https://api.anthropic.com` (or `ANTHROPIC_BASE_URL`): exit 0 for any HTTP answer, 7 for a refused connection. |
 | Hook timeout | Claude Code enforces `timeout` on `asyncRewake` hooks, unlike plain `async` ones. The installer sets 4 hours, so `OFFLINE_MINUTES` stops at 239. |
+| Does `StopFailure` always mean a turn failed? | No. On 2026-11-06 it fired with `ENOTFOUND` in an idle session while the internet was gone (about 11:57 to 12:06), with no turn or error in the transcript between the last turn at 11:03 and the wake, so it came from a request Claude Code makes in the background. claude-coffee woke that session at 12:06:55 to carry on, with nothing to carry on. Since then it waits only when the session's marker says a turn was running. |
 | Not tested | Claude Code's other connection messages (`Connection lost mid-response`, `The response stopped arriving`) as hook input; claude-coffee matches them from the docs. |
 
 ### A real drop

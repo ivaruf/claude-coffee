@@ -554,6 +554,9 @@ lost=''   # a turn that ended on an API error: the error as Claude Code showed i
 # only server_error or unknown (a refused connection reads server_error), so the message has to tell
 cut_off() {
   if [ "$AUTO_CONTINUE" != 1 ] || [ -z "$sid" ]; then return 1; fi
+  # Only a turn that was running (its marker): a request Claude Code makes in the background of an idle
+  # session ends in StopFailure too, and woke one with nothing to carry on (2026-11-06)
+  [ -e "$D/$sid" ] || return 1
   case $lost in
     *'Unable to connect'*|*'Connection refused'*|*'reach the API'*|*internet*|*'Connection dropped'*|\
     *'Connection lost'*|*'timed out'*|*'went to sleep'*|*'stopped arriving'*|*stalled*|\
