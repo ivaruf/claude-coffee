@@ -85,7 +85,7 @@ One prompt typed at the Mac before leaving home: pick tasks off the board and wo
 
 The address was back 18 s before Claude Code's retries would have run out, going by the 2 min 54 s of [the drop of 2026-11-03](#a-real-drop). Counted from the first unanswered request, though, the API was out of reach for about 4½ minutes and the turn still didn't fail. The transcript doesn't log retries, so it doesn't show why. A guess: a request that hangs on a weak signal uses up time rather than attempts.
 
-8 points of this 100 Wh battery in 90 minutes is about 5 W on average.
+8 points of this 100 Wh battery in 90 minutes is about 5 W on average. That's for real work, with the hotspot's Wi-Fi and about 12 minutes of display. The 1% steps make it rough, and so does macOS showing 100% for a while after it's unplugged.
 
 ## A night on the charger, and a shop (2026-11-06)
 
@@ -103,8 +103,6 @@ The address was back 18 s before Claude Code's retries would have run out, going
 | 10:03 | The lid opened. |
 
 So remote mode on battery hangs on the login being there at the moment the check runs. The last prompt was at 09:22, so the Mac would have stayed up until 10:22. Instead, a couple of minutes without a signal, ended by a check 20 s later, put it to sleep, and the phone couldn't get back in. The same morning on the charger would have kept it up.
-
-## Heat guard That's for real work, with the hotspot's Wi-Fi and about 12 minutes of display. The 1% steps make it rough, and so does macOS showing 100% for a while after it's unplugged.
 
 ## Heat guard
 
