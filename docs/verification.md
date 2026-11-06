@@ -85,7 +85,26 @@ One prompt typed at the Mac before leaving home: pick tasks off the board and wo
 
 The address was back 18 s before Claude Code's retries would have run out, going by the 2 min 54 s of [the drop of 2026-11-03](#a-real-drop). Counted from the first unanswered request, though, the API was out of reach for about 4½ minutes and the turn still didn't fail. The transcript doesn't log retries, so it doesn't show why. A guess: a request that hangs on a weak signal uses up time rather than attempts.
 
-8 points of this 100 Wh battery in 90 minutes is about 5 W on average. That's for real work, with the hotspot's Wi-Fi and about 12 minutes of display. The 1% steps make it rough, and so does macOS showing 100% for a while after it's unplugged.
+8 points of this 100 Wh battery in 90 minutes is about 5 W on average.
+
+## A night on the charger, and a shop (2026-11-06)
+
+`AWAKE_ON_AC=1`, and the phone logged in over SSH: Tailscale, from 100.103.190.70 to a non-root `sshd` on 100.85.221.53:22022 (the burrow setup), with `claude` in `tmux`. In the morning the Mac rode in a bag on the phone's hotspot. Sources: `pmset -g log`, the kernel's `PMRD` lines and launchd's runs of the check in `log show`, the burrow `sshd.log` (which has no timestamps), and `~/.claude/history.jsonl`. Times are local.
+
+| Time | What happened |
+|---|---|
+| 11-05 15:20:54 | The phone logged in. That one login lasted 18 hours: the same `sshd-session` process (PID and thread) logged again at its end. |
+| 19:22 → 06:26 | Lid closed, on AC, no Claude turns, a login 4 to 15 hours old. No sleep entry in the power log for 11 hours: `AWAKE_ON_AC` held it. |
+| 06:26 → 09:41 | On and off the charger (on battery 06:26–07:33 and from 09:06:35), the lid closed most of the time. Prompts typed on the phone, 06:31 to 09:22, kept remote mode on: the login was old, but the last hook event was under an hour old. |
+| 09:19:40 | The hotspot's network changed (a new IPv6 prefix); the Mac kept its address. |
+| 09:41:04 | In a shop, the phone had lost its mobile data. sshd gave up: `Read error from remote host … Operation timed out`. With `ClientAliveInterval 30` and `ClientAliveCountMax 4`, the phone had been unreachable for at most about 2 minutes. |
+| 09:41:24.7 → 09:41:26.1 | launchd ran the check (every earlier run took 0.18 s and changed nothing). No SSH login, on battery, no turn: it released sleep and ran `pmset sleepnow`. The kernel logged `sleep reason Software Sleep` at 09:41:26.078, the second the check exited. |
+| 09:45, 09:58, 10:01, 10:02 | Dark wakes, which the kernel put down to the Wi-Fi chip (`wifibt`), each followed by a network change. In the 09:58:49 one, four reconnects from the phone reached sshd at 09:59:29, but the Mac slept again at 09:59:35, so they ended `Timeout before authentication`. |
+| 10:03 | The lid opened. |
+
+So remote mode on battery hangs on the login being there at the moment the check runs. The last prompt was at 09:22, so the Mac would have stayed up until 10:22. Instead, a couple of minutes without a signal, ended by a check 20 s later, put it to sleep, and the phone couldn't get back in. The same morning on the charger would have kept it up.
+
+## Heat guard That's for real work, with the hotspot's Wi-Fi and about 12 minutes of display. The 1% steps make it rough, and so does macOS showing 100% for a while after it's unplugged.
 
 ## Heat guard
 
