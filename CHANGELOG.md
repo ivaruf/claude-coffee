@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
-- `claude-coffee.sh standby [5h|90m|off]`: keeps the machine reachable for a while, lid closed too, whether Claude is working or not, for when you'll log in later and the charger can't be trusted. 5 hours unless told, at most 24. It runs out by itself and a restart ends it; the heat and battery guards still apply. `status` shows what's left.
+- `claude-coffee.sh standby [5h|90m|off]`: keeps the machine reachable for a while, lid closed too, whether Claude is working or not, for when you'll log in later and the charger can't be trusted. 5 hours unless told (`STANDBY` in the config), at most 24. It runs out by itself and a restart ends it; the heat and battery guards still apply. `status` shows what's left.
 - `AWAKE_ON_AC=1`: while plugged in, the machine stays awake, lid closed too, whether Claude is working or not, so you can reach it from elsewhere. Unplugged, the usual rules are back within a minute, and the heat guard still applies. Off by default; the installer asks once.
 - Auto-continue: when the internet cuts a turn short, claude-coffee keeps the machine awake, checks every 20 seconds whether the API answers, then wakes Claude to carry on (a background `StopFailure` hook with `asyncRewake`). It gives up after `OFFLINE_MINUTES` (60), after three tries in a row with no tool call, or when a guard steps in, and lets the machine sleep. Notifications, the terminal's title (the session's name, with a note while it waits and a cheer when it's back) and `status` keep you posted, with little Claude's worries. `AUTO_CONTINUE=0` turns it off.
 

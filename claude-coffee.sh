@@ -21,6 +21,7 @@ AUTO_CONTINUE=1     # 0 = a turn the internet cut short waits for you to type "c
 OFFLINE_MINUTES=60  # how long to stay awake waiting for the internet to come back (at most 239)
 OFFLINE_POLL=20     # seconds between checks while it's gone
 AWAKE_ON_AC=0       # 1 = while plugged in, stay awake, lid closed too, Claude working or not
+STANDBY=5h          # how long "standby" lasts when not told (90m works too; at most 24h)
 # shellcheck source=/dev/null
 [ -f "$C/config" ] && . "$C/config"
 D=$C/busy   # one marker file per session that is mid-turn
@@ -534,10 +535,10 @@ clock() { date -d "@$1" +%H:%M 2>/dev/null || date -r "$1" +%H:%M; }   # GNU, th
 case $1 in
   on|off|wait) json=$(cat); touch "$L" ;;
   check|status) ;;
-  standby)   # 5 h unless told; capped at 24, so a typo can't keep the machine up for weeks
-    case ${2:-5h} in
+  standby)   # STANDBY unless told; capped at 24 h, so a typo can't keep the machine up for weeks
+    case ${2:-$STANDBY} in
       off) rm -f "$SB"; echo 'claude-coffee: standby off' ;;
-      *) a=${2:-5h}; n=${a%[hm]}
+      *) a=${2:-$STANDBY}; n=${a%[hm]}
          case $n in [1-9]|[1-9][0-9]|[1-9][0-9][0-9]|[1-9][0-9][0-9][0-9]) ;; *) n=99999 ;; esac
          case $a in *m) ;; *) n=$((n * 60)) ;; esac
          if [ "$n" -gt 1440 ]; then echo "usage: ${0##*/} standby [5h | 3h | 90m, at most 24h | off]" >&2; exit 1; fi

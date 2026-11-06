@@ -200,6 +200,8 @@ echo $(($(date +%s) - 1)) >"$SB"
 echo $(($(date +%s) + 90000)) >"$SB"; [ "$(chk)" = 0 ]; [ ! -e "$SB" ]; t   # over 24 h left (the clock went back): not trusted
 run standby 30m </dev/null >/dev/null; [ "$(chk)" = 1 ]; t   # minutes
 run standby </dev/null >/dev/null; run status </dev/null | grep -q '(5 h 0 min left)$'; t   # 5 h unless told
+echo 'STANDBY=3h' >"$T/.claude/coffee/config"; run standby </dev/null >/dev/null
+run status </dev/null | grep -q '(3 h 0 min left)$'; rm "$T/.claude/coffee/config"; t   # ... or as the config says
 run standby off </dev/null >/dev/null; [ ! -e "$SB" ]; [ "$(cat "$T/state")" = 0 ]; t   # off: the usual rules at once
 for bad in 25h 1441m 0 05h x 5d; do if run standby "$bad" </dev/null 2>/dev/null; then exit 1; fi; done; [ ! -e "$SB" ]; t   # refused
 if [ "$FX" != windows ]; then       # a restart ends it, like the markers

@@ -162,7 +162,7 @@ Driving Claude Code from your phone over SSH? While you're logged in, the machin
 Going out, and want to get in later? Remote mode can't help before you log in, and a charger can fail. Standby keeps the machine reachable for a while, lid closed too, whether Claude is working or not:
 
 ```sh
-~/.claude/hooks/claude-coffee.sh standby       # 5 hours; or standby 3h, standby 90m, at most 24h
+~/.claude/hooks/claude-coffee.sh standby       # 5 hours (STANDBY in the config); or standby 3h, standby 90m, at most 24h
 ~/.claude/hooks/claude-coffee.sh standby off   # back to the usual rules right away
 ```
 
@@ -191,6 +191,7 @@ HOT_BATTERY_C=45   # with the lid closed, a battery this hot (°C) means sleep
 LOW_BATTERY=20     # on battery at this charge (%) or less, stop keeping the machine awake; 0 turns it off
 AUTO_CONTINUE=1    # 0: a turn the internet cut short waits for you to reply "continue"
 OFFLINE_MINUTES=60 # how long to stay awake waiting for the internet (at most 239)
+STANDBY=5h         # how long standby lasts when you don't say (90m works too; at most 24h)
 AWAKE_ON_AC=0      # 1: while plugged in, stay awake, lid closed too, Claude working or not
 ```
 
