@@ -105,6 +105,8 @@ The address was back 18 s before Claude Code's retries would have run out, going
 
 So remote mode on battery hung on the login being there at the moment a hook or the check ran. The last prompt was at 09:22, so the Mac would have stayed up until 10:22. Instead, a couple of minutes without a signal put it to sleep, twice, and the phone couldn't get back in. The same morning on the charger would have kept it up. Since then, a login that drops still counts until remote mode would lapse anyway.
 
+With that installed, the same Mac, lid closed and on battery, and the phone walked out of range at about 10:41. sshd dropped the login at 10:44:51. The Mac stayed up: when the network came back at 10:50:15, macOS tried to sleep twice (10:50:21 and 10:50:45), and both times the kernel logged `prevented by kPMUserDisabledAllSleep`. The phone logged in again at 10:50:40, without anyone touching the Mac. The SSH app still has to reconnect after a drop like that. Claude in `tmux` carries on.
+
 ## Heat guard
 
 ### Official limits
