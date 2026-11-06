@@ -132,6 +132,14 @@ echo 05:12 >"$T/etime"
 [ "$(chk)" = 0 ]; t                 # remote mode switched off
 rm "$T/.claude/coffee/config"; : >"$T/ssh"
 [ "$(chk)" = 0 ]; t                 # logged out
+echo 4242 >"$T/ssh"; hook on G >/dev/null; [ "$(hook off G)" = 1 ]   # a prompt from the phone ...
+: >"$T/ssh"
+[ "$(chk)" = 1 ]; t                 # ... then the phone loses signal and the login drops: still awake
+run status </dev/null | grep -q '^  remote mode    on (SSH login, dropped at [0-9][0-9]:[0-9][0-9])$'; t
+touch -t "$(ago 61)" "$T/.claude/coffee/last"
+[ "$(chk)" = 0 ]; t                 # an hour after the prompt it lapses, as with the login there
+touch "$T/.claude/coffee/last"; touch -t "$(ago 61)" "$T/.claude/coffee/ssh"
+[ "$(chk)" = 0 ]; t                 # a login last seen over an hour ago no longer counts
 quiet() { hook on Q >/dev/null; touch -t "$(ago "$1")" "$T/.claude/coffee/busy/Q"; }
 procs() { printf '  500     1  3-00:00:00  0.0 claude\n' >"$T/ptable"; printf '%s\n' "$@" >>"$T/ptable"; }
 quiet 40; [ "$(chk)" = 0 ]; t       # 40 min without a hook and Claude Code isn't working: stale

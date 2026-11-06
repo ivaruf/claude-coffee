@@ -671,15 +671,21 @@ want=0; [ "$busy" = 0 ] || want=1
 
 # Remote mode: while you're logged in over SSH (say, from your phone), also stay awake between turns
 # so the next prompt can arrive. It lapses REMOTE_MINUTES after the later of the last hook event and
-# the login, so a dead or forgotten connection can't keep the Mac up for good.
+# the login, so a dead or forgotten connection can't keep the Mac up for good. A login that drops (a
+# phone out of signal) doesn't end it early: it counts for REMOTE_MINUTES after it was last seen, so
+# the phone can get back in. shortcut: with it gone, only the last hook event says how long, so a
+# shell-only login that drops ends remote mode at once; worth fixing if that's ever a real use.
 remote=0
-if [ "$REMOTE" = 1 ] && ssh=$(ssh_logins); then
-  remote=1
-  if [ -n "$(find "$L" -mmin -"$REMOTE_MINUTES" 2>/dev/null)" ] ||
-     login_ages "$ssh" | awk -v m="$REMOTE_MINUTES" '
-       { n = split($1, t, /[-:]/); if (t[n] + 60*t[n-1] + 3600*t[n-2] + 86400*t[n-3] < m*60) young = 1 }
-       END { exit !young }'; then
-    remote=2; want=1
+if [ "$REMOTE" = 1 ]; then
+  if ssh=$(ssh_logins); then touch "$C/ssh"; else ssh=; fi
+  if [ -n "$ssh" ] || [ -n "$(find "$C/ssh" -mmin -"$REMOTE_MINUTES" 2>/dev/null)" ]; then
+    remote=1
+    if [ -n "$(find "$L" -mmin -"$REMOTE_MINUTES" 2>/dev/null)" ] ||
+       { [ -n "$ssh" ] && login_ages "$ssh" | awk -v m="$REMOTE_MINUTES" '
+         { n = split($1, t, /[-:]/); if (t[n] + 60*t[n-1] + 3600*t[n-2] + 86400*t[n-3] < m*60) young = 1 }
+         END { exit !young }'; }; then
+      remote=2; want=1
+    fi
   fi
 fi
 
@@ -739,6 +745,7 @@ if [ "$1" = status ]; then
     1) r="lapsed (SSH login, but quiet for $REMOTE_MINUTES min)" ;;
     *) r='on (SSH login)' ;;
   esac
+  [ "$remote" = 0 ] || [ -n "$ssh" ] || r="${r%)}, dropped at $(date -r "$C/ssh" +%H:%M))"
   [ "$REMOTE" = 1 ] || r='disabled in config'
   a="on: after a lost connection, carries on once it's back (waits up to $OFFLINE_MINUTES min)" worry=''
   [ "$AUTO_CONTINUE" = 1 ] || a='disabled in config'

@@ -28,6 +28,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- Remote mode ended the moment an SSH login dropped, so a phone that lost its signal for a couple of minutes left a lid-closed Mac on battery asleep, out of reach (seen twice on 2026-11-06). A dropped login now counts until remote mode would lapse anyway, an hour after the last activity.
 - macOS remote mode missed the SSH login Claude itself runs in (`pgrep` leaves out its own ancestors without `-a`), so with the lid closed the Mac slept at the end of every turn sent from a phone.
 - `curl … | sh` decides that it was piped from `$0` alone, so a `claude-coffee.sh` in the current folder can't be installed instead of the download.
 - If a turn started during the one-second wait before `pmset sleepnow`, the Mac could be put to sleep mid-turn. The hook now checks again right before sleeping.

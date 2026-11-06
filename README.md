@@ -157,7 +157,7 @@ The [field notes](docs/verification.md#linux) list what each backend relies on a
 
 ## Remote mode
 
-Driving Claude Code from your phone over SSH? While you're logged in, the machine also stays up between turns, so it doesn't fall asleep while you type the next prompt. It lapses after an hour without activity.
+Driving Claude Code from your phone over SSH? While you're logged in, the machine also stays up between turns, so it doesn't fall asleep while you type the next prompt. It lapses after an hour without activity. A dropped connection, say your phone out of signal, doesn't end it early, so you can get back in.
 
 <details>
 <summary>Tips for a phone setup</summary>

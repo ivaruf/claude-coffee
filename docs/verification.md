@@ -101,8 +101,9 @@ The address was back 18 s before Claude Code's retries would have run out, going
 | 09:41:24.7 → 09:41:26.1 | launchd ran the check (every earlier run took 0.18 s and changed nothing). No SSH login, on battery, no turn: it released sleep and ran `pmset sleepnow`. The kernel logged `sleep reason Software Sleep` at 09:41:26.078, the second the check exited. |
 | 09:45, 09:58, 10:01, 10:02 | Dark wakes, which the kernel put down to the Wi-Fi chip (`wifibt`), each followed by a network change. In the 09:58:49 one, four reconnects from the phone reached sshd at 09:59:29, but the Mac slept again at 09:59:35, so they ended `Timeout before authentication`. |
 | 10:03 | The lid opened. |
+| 10:03 → 10:21 | On the move again, lid closed, on battery. A new login from the phone timed out the same way. At 10:21:40 a turn in another session ended, and its `Stop` hook found no login and put the Mac to sleep, 25 s after a minute check had left it alone. |
 
-So remote mode on battery hangs on the login being there at the moment the check runs. The last prompt was at 09:22, so the Mac would have stayed up until 10:22. Instead, a couple of minutes without a signal, ended by a check 20 s later, put it to sleep, and the phone couldn't get back in. The same morning on the charger would have kept it up.
+So remote mode on battery hung on the login being there at the moment a hook or the check ran. The last prompt was at 09:22, so the Mac would have stayed up until 10:22. Instead, a couple of minutes without a signal put it to sleep, twice, and the phone couldn't get back in. The same morning on the charger would have kept it up. Since then, a login that drops still counts until remote mode would lapse anyway.
 
 ## Heat guard
 
