@@ -276,7 +276,8 @@ main() {
     a=; read -r a <"$TTY" || :
     case $a in [Yy]*) v=1 ;; *) v=0 ;; esac
     mkdir -p "$(dirname "$conf")"
-    { [ ! -s "$conf" ] || [ -z "$(tail -c 1 "$conf")" ] || echo; echo "AWAKE_ON_AC=$v"; } >>"$conf"   # a hand-edited last line may lack its newline
+    [ ! -s "$conf" ] || [ -z "$(tail -c 1 "$conf")" ] || echo >>"$conf"   # a hand-edited last line may lack its newline
+    echo "AWAKE_ON_AC=$v" >>"$conf"
     step config "$conf (AWAKE_ON_AC=$v)"
   fi
 
